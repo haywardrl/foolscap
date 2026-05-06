@@ -80,6 +80,12 @@ Thumbs.db
 .clangd/
 *.swo
 
+# Emacs
+*~
+\#*\#
+.\#*
+.dir-locals.el
+
 # ESP-IDF
 sdkconfig
 sdkconfig.old
