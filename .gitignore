@@ -46,6 +46,7 @@ build-*/
 
 # CMake generated files
 CMakeFiles/
+cmake-build-*/
 CMakeCache.txt
 cmake_install.cmake
 Makefile
@@ -57,6 +58,7 @@ compile_commands.json
 *.log
 *.bak
 *.swp
+/tmp/
 
 # vcpkg
 vcpkg_installed/
@@ -65,5 +67,22 @@ vcpkg_installed/
 *.dwo
 
 # test output & cache
-Testing/
+testing/
 .cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+.clangd/
+*.swo
+
+# ESP-IDF
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+.component_hash
