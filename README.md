@@ -23,6 +23,10 @@ In active early development. Not yet usable. Building toward a v0.1 simulator-on
 
 See [BUILDING.md](BUILDING.md).
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md)
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
