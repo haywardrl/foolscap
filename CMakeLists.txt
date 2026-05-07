@@ -8,8 +8,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(SDL2 REQUIRED)
 
-add_executable(foolscap-sdl src/ports/sdl/main_sdl.c)
+add_executable(foolscap-sdl src/ports/sdl/main_sdl.c src/app/buffer/buffer.c)
 
 target_link_libraries(foolscap-sdl PRIVATE SDL2::SDL2)
 
-target_compile_options(foolscap-sdl PRIVATE -Wall -Wextra -Wpedantic)
+target_include_directories(foolscap-sdl PRIVATE src)
+
+target_compile_options(foolscap-sdl PRIVATE -Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition)
