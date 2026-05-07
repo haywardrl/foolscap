@@ -15,8 +15,7 @@ sudo pacman -S base-devel cmake sdl2 clang
 ## Desktop simulator
 
 ```sh
-cmake -B build
-cmake --build build
+cmake -B build && cmake --build build
 ./build/foolscap-sdl
 ```
 
