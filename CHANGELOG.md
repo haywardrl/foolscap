@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Gap buffer implemented
 - SDL2 hello-world simulator window
 - Top-level CMakeLists for the SDL build target
 - Repository scaffolding: README, BUILDING, LICENSE, .gitignore, .editorconfig, .clang-format
