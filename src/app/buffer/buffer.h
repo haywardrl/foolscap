@@ -23,3 +23,4 @@ bool buffer_set_cursor(buffer_t *buffer, size_t pos);
 // Read-only accessors
 size_t buffer_cursor_pos(const buffer_t *buffer);
 size_t buffer_size(const buffer_t *buffer);
+char buffer_char_at(const buffer_t *buffer, size_t pos);

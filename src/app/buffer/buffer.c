@@ -1,5 +1,6 @@
 #include "buffer.h"
 
+#include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -57,7 +58,6 @@ bool buffer_backspace(buffer_t *buffer) {
         return false;
     }
     buffer->gap_start -= 1;
-    buffer->gap_end -= 1;
     return true;
 }
 
@@ -87,7 +87,7 @@ bool buffer_move_cursor(buffer_t *buffer, int32_t delta) {
         new_pos = current + (size_t)delta;
     }
     buffer_set_cursor(buffer, new_pos);
-    return true;
+    return buffer_cursor_pos(buffer) != current;
 }
 
 // buffer_set_cursor: position the cursor to a new location.
@@ -122,5 +122,15 @@ size_t buffer_cursor_pos(const buffer_t *buffer) {
 
 // buffer_size: returns the size of buffer exclusive of gap
 size_t buffer_size(const buffer_t *buffer) {
-    return buffer->gap_start + ((buffer->capacity - 1) - buffer->gap_end);
+    return buffer->gap_start + (buffer->capacity - buffer->gap_end);
+}
+
+// buffer_char_at: returns the char at buffer->data[pos]
+char buffer_char_at(const buffer_t *buffer, size_t pos) {
+    assert(pos < buffer_size(buffer));
+    if (pos < buffer->gap_start) {
+        return buffer->data[pos];
+    }
+    size_t gap_size = buffer->gap_end - buffer->gap_start;
+    return buffer->data[pos + gap_size];
 }
