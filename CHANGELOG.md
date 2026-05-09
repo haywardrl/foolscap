@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Unity test framework added and implemented into CMake
 - Gap buffer implemented
 - SDL2 hello-world simulator window
 - Top-level CMakeLists for the SDL build target
