@@ -9,4 +9,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition)
 
 add_executable(fontgen fontgen.c)
+target_include_directories(fontgen PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../src/app/render)
 target_link_libraries(fontgen PRIVATE m)
+
+option(FOOLSCAP_DEBUG_ATLAS "Write atlas.pgm for glyph debugging" OFF)
+
+if(FOOLSCAP_DEBUG_ATLAS)
+    target_compile_definitions(fontgen PRIVATE DEBUG_ATLAS)
+endif()
