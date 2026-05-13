@@ -30,3 +30,7 @@ See [CHANGELOG.md](CHANGELOG.md)
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Acknowledgement
+
+Bundled with IBM Plex Mono, copyright 2017 IBM Corp, licensed under the SIL Open Font License v1.1
