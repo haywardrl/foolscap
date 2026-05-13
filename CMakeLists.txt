@@ -8,13 +8,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(SDL2 REQUIRED)
 
-add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition)
+add_compile_options(-Wall -Wextra -Werror -Wpedantic -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition)
 
-add_executable(foolscap-sdl src/ports/sdl/main_sdl.c src/app/buffer/buffer.c)
+add_executable(foolscap-sdl
+    src/ports/sdl/main_sdl.c
+    src/app/buffer/buffer.c
+    src/app/render/fonts/ibm_plex_mono_20.c
+)
 
 target_link_libraries(foolscap-sdl PRIVATE SDL2::SDL2)
 
-target_include_directories(foolscap-sdl PRIVATE src)
+target_include_directories(foolscap-sdl PRIVATE src src/app/render/)
 
 enable_testing()
 add_subdirectory(tests)

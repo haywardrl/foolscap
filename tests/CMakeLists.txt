@@ -16,3 +16,4 @@ function(add_unit_test name)
 endfunction()
 
 add_unit_test(buffer ${CMAKE_SOURCE_DIR}/src/app/buffer/buffer.c)
+add_unit_test(render ${CMAKE_SOURCE_DIR}/src/app/render/font.h)
