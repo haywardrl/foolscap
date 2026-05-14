@@ -17,3 +17,4 @@ endfunction()
 
 add_unit_test(buffer ${CMAKE_SOURCE_DIR}/src/app/buffer/buffer.c)
 add_unit_test(render ${CMAKE_SOURCE_DIR}/src/app/render/font.h)
+add_unit_test(utf8 ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c)

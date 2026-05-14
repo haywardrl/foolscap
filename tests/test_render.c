@@ -9,7 +9,7 @@ void tearDown(void) {
 
 static void test_create_glyph_t_returns_not_null(void) {
     font_glyph_t *glyph;
-    TEST_ASSERT_EQUAL(12, sizeof(*glyph));
+    TEST_ASSERT_EQUAL(16, sizeof(*glyph));
 }
 
 int main(void) {

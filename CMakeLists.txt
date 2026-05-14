@@ -14,6 +14,7 @@ add_executable(foolscap-sdl
     src/ports/sdl/main_sdl.c
     src/app/buffer/buffer.c
     src/app/render/fonts/ibm_plex_mono_20.c
+    src/app/util/utf8.c
 )
 
 target_link_libraries(foolscap-sdl PRIVATE SDL2::SDL2)
