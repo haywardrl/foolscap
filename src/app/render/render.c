@@ -1,11 +1,8 @@
 #include "render.h"
 
 #include "app/util/utf8.h"
-#include "font.h"
 #include "render_internal.h"
 
-#include <stddef.h>
-#include <stdint.h>
 #include <string.h>
 
 const font_glyph_t *render_find_glyph(const font_t *font, uint32_t codepoint) {
