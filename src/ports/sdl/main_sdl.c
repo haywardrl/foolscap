@@ -1,53 +1,46 @@
-#include <SDL2/SDL.h>
-#include <stdio.h>
+#include "app/render/fonts/ibm_plex_mono_20.h"
+#include "hal/hal_display.h"
+#include "render.h"
 
-#define SCREEN_WIDTH 960
-#define SCREEN_HEIGHT 540
+#include <SDL2/SDL.h>
 
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
+    int rc = 1;
+    if (hal_display_init() != 0) {
         return 1;
     }
-
-    SDL_Window *window =
-        SDL_CreateWindow("Foolscap", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH,
-                         SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-    if (!window) {
-        fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
-        SDL_Quit();
-        return 1;
+    hal_display_clear(255);
+    hal_framebuffer_t *fb = hal_display_get_framebuffer();
+    if (fb == NULL) {
+        goto cleanup;
     }
-
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
-    if (!renderer) {
-        fprintf(stderr, "SDL_CreateRenderer failed: %s\n", SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
-
-    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+    render_draw_string(fb, &IBM_PLEX_MONO_20, 10, 30, "Hello, Foolscap!");
+    hal_display_flush();
 
     SDL_Event event;
     int running = 1;
     while (running) {
         SDL_WaitEvent(&event);
-        if (event.type == SDL_QUIT) {
+        switch (event.type) {
+        case SDL_QUIT:
             running = 0;
+            break;
+        case SDL_KEYDOWN:
+            if (event.key.keysym.sym == SDLK_ESCAPE)
+                running = 0;
+            break;
+        case SDL_WINDOWEVENT:
+            if (event.window.event == SDL_WINDOWEVENT_EXPOSED) {
+                hal_display_flush();
+            }
+            break;
         }
-        if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) {
-            running = 0;
-        }
-        SDL_RenderClear(renderer);
-        SDL_RenderPresent(renderer);
     }
-
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    return 0;
+    rc = 0;
+cleanup:
+    hal_display_shutdown();
+    return rc;
 }
