@@ -181,6 +181,50 @@ static void test_codepoint_above_max_rejected(void) {
     TEST_ASSERT_EQUAL_HEX32(0xDEADBEEF, cp);
 }
 
+// 0x80 is a valid continuation byte but never a valid lead.
+// Some naive decoders mishandle this distinctly from 0xFF.
+static void test_orphan_continuation_byte(void) {
+    const char input[] = {(char)0x80};
+    utf8_iter_t it;
+    utf8_iter_init(&it, input, sizeof(input));
+    uint32_t cp = 0xDEADBEEF;
+    utf8_status_t status = utf8_next(&it, &cp);
+    TEST_ASSERT_EQUAL(UTF8_INVALID, status);
+    TEST_ASSERT_EQUAL_PTR(input + 1, it.p);
+    TEST_ASSERT_EQUAL_HEX32(0xDEADBEEF, cp);
+}
+
+// Lead bytes 0xF8–0xFD encoded 5- and 6-byte sequences in obsolete UTF-8.
+// Modern UTF-8 (RFC 3629) caps at 4 bytes. Reject these lead bytes.
+static void test_obsolete_five_byte_lead_rejected(void) {
+    const char input[] = {(char)0xF8, (char)0x80, (char)0x80, (char)0x80, (char)0x80};
+    utf8_iter_t it;
+    utf8_iter_init(&it, input, sizeof(input));
+    uint32_t cp = 0xDEADBEEF;
+    utf8_status_t status = utf8_next(&it, &cp);
+    TEST_ASSERT_EQUAL(UTF8_INVALID, status);
+    TEST_ASSERT_EQUAL_PTR(input + 1, it.p);
+    TEST_ASSERT_EQUAL_HEX32(0xDEADBEEF, cp);
+}
+
+// Re-initialising an iterator should fully reset its state.
+static void test_iter_init_resets_state(void) {
+    utf8_iter_t it;
+    const char *first = "A";
+    utf8_iter_init(&it, first, 1);
+    uint32_t cp = 0;
+    TEST_ASSERT_EQUAL(UTF8_OK, utf8_next(&it, &cp));
+    TEST_ASSERT_EQUAL(UTF8_END, utf8_next(&it, &cp));
+
+    // Re-init with new input — iterator must point at the new buffer,
+    // not be stuck at the end of the old one.
+    const char *second = "B";
+    utf8_iter_init(&it, second, 1);
+    TEST_ASSERT_EQUAL_PTR(second, it.p);
+    TEST_ASSERT_EQUAL(UTF8_OK, utf8_next(&it, &cp));
+    TEST_ASSERT_EQUAL_HEX32(0x42, cp);
+}
+
 static void test_multiple_codepoints_iterate_correctly(void) {
     // "A£€𝄞" — one each of 1, 2, 3, 4-byte sequences
     // A     = 0x41                    (1 byte)
@@ -227,6 +271,9 @@ int main(void) {
     RUN_TEST(test_overlong_null_two_byte);
     RUN_TEST(test_surrogate_rejected);
     RUN_TEST(test_codepoint_above_max_rejected);
+    RUN_TEST(test_orphan_continuation_byte);
+    RUN_TEST(test_obsolete_five_byte_lead_rejected);
+    RUN_TEST(test_iter_init_resets_state);
     RUN_TEST(test_multiple_codepoints_iterate_correctly);
     return UNITY_END();
 }

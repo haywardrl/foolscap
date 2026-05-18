@@ -17,7 +17,8 @@ int main(int argc, char *argv[]) {
     if (fb == NULL) {
         goto cleanup;
     }
-    render_draw_string(fb, &IBM_PLEX_MONO_20, 10, 30, "Hello, Foolscap!");
+    static const char msg[] = "Hello, Foolscap!";
+    render_draw_string(fb, &IBM_PLEX_MONO_20, 10, 30, msg, sizeof(msg) - 1);
     hal_display_flush();
 
     SDL_Event event;

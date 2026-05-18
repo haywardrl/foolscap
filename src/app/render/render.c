@@ -3,8 +3,6 @@
 #include "app/util/utf8.h"
 #include "render_internal.h"
 
-#include <string.h>
-
 const font_glyph_t *render_find_glyph(const font_t *font, uint32_t codepoint) {
     if (font->glyph_count == 0) {
         return NULL;
@@ -51,12 +49,12 @@ int render_draw_glyph(hal_framebuffer_t *fb, const font_t *font, const font_glyp
 }
 
 int render_draw_string(hal_framebuffer_t *fb, const font_t *font, int x, int baseline_y,
-                       const char *utf8_text) {
+                       const char *utf8_text, size_t len) {
     int start_x = x;
     int cursor_x = x;
     int cursor_y = baseline_y;
     utf8_iter_t it;
-    utf8_iter_init(&it, utf8_text, strlen(utf8_text));
+    utf8_iter_init(&it, utf8_text, len);
 
     uint32_t codepoint = 0;
     utf8_status_t status = UTF8_OK;

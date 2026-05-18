@@ -16,5 +16,21 @@ function(add_unit_test name)
 endfunction()
 
 add_unit_test(buffer ${CMAKE_SOURCE_DIR}/src/app/buffer/buffer.c)
-add_unit_test(render ${CMAKE_SOURCE_DIR}/src/app/render/font.h)
 add_unit_test(utf8 ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c)
+add_unit_test(render
+    ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
+    ${CMAKE_SOURCE_DIR}/src/app/render/fonts/ibm_plex_mono_20.c
+)
+add_unit_test(find_glyph
+    ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
+)
+add_unit_test(put_pixel
+    ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
+)
+add_unit_test(draw_glyph
+    ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
+)
