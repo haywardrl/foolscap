@@ -515,7 +515,7 @@ static int emit_files(const char *basename, int argc, char *argv[], const char *
     emit_header_comment(fh);
     fprintf(fh, "\n");
     fprintf(fh, "#pragma once\n\n");
-    fprintf(fh, "#include \"font.h\"\n\n");
+    fprintf(fh, "#include \"app/render/font.h\"\n\n");
     fprintf(fh, "extern const font_t %s;\n", ident);
     if (fclose(fh) != 0) {
         fprintf(stderr, "Error: could not close '%s'\n", h_path);
