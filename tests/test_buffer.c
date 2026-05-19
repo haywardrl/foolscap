@@ -1,4 +1,5 @@
 #include "app/buffer/buffer.h"
+#include "unity_internals.h"
 
 #include <unity.h>
 
@@ -6,8 +7,6 @@ void setUp(void) {
 }
 void tearDown(void) {
 }
-
-// --- Lifecycle ---
 
 static void test_create_returns_non_null(void) {
     buffer_t *buffer = buffer_create(16);
@@ -30,8 +29,6 @@ static void test_create_cursor_zero(void) {
 static void test_destroy_null_safe(void) {
     buffer_destroy(NULL);
 }
-
-// --- Insert ---
 
 static void test_insert_bytes_increases_size(void) {
     buffer_t *buffer = buffer_create(16);
@@ -90,8 +87,6 @@ static void test_insert_bytes_exact_fit(void) {
     buffer_destroy(buffer);
 }
 
-// --- Delete before cursor ---
-
 static void test_delete_before_cursor_at_start_returns_zero(void) {
     buffer_t *buffer = buffer_create(16);
     TEST_ASSERT_EQUAL_size_t(0, buffer_delete_before_cursor(buffer, 1));
@@ -126,24 +121,43 @@ static void test_delete_before_cursor_clamps_to_available(void) {
     buffer_destroy(buffer);
 }
 
-// --- Delete forward ---
-
-static void test_delete_forward_at_end_returns_false(void) {
+static void test_delete_after_cursor_at_end_returns_zero(void) {
     buffer_t *buffer = buffer_create(16);
-    TEST_ASSERT_FALSE(buffer_delete_forward(buffer));
+    buffer_insert_bytes(buffer, "A", 1);
+    // Cursor is at the end after insert
+    TEST_ASSERT_EQUAL_size_t(0, buffer_delete_after_cursor(buffer, 1));
     buffer_destroy(buffer);
 }
 
-static void test_delete_forward_decreases_size(void) {
+static void test_delete_after_cursor_one_byte(void) {
     buffer_t *buffer = buffer_create(16);
-    buffer_insert_bytes(buffer, "A", 1);
+    buffer_insert_bytes(buffer, "AB", 2);
     buffer_set_cursor(buffer, 0);
-    TEST_ASSERT_TRUE(buffer_delete_forward(buffer));
+    TEST_ASSERT_EQUAL_size_t(1, buffer_delete_after_cursor(buffer, 1));
+    TEST_ASSERT_EQUAL_size_t(1, buffer_size(buffer));
+    TEST_ASSERT_EQUAL('B', buffer_char_at(buffer, 0));
+    buffer_destroy(buffer);
+}
+
+static void test_delete_after_cursor_multi_byte(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "ABCDE", 5);
+    buffer_set_cursor(buffer, 0);
+    TEST_ASSERT_EQUAL_size_t(3, buffer_delete_after_cursor(buffer, 3));
+    TEST_ASSERT_EQUAL_size_t(2, buffer_size(buffer));
+    TEST_ASSERT_EQUAL('D', buffer_char_at(buffer, 0));
+    TEST_ASSERT_EQUAL('E', buffer_char_at(buffer, 1));
+    buffer_destroy(buffer);
+}
+
+static void test_delete_after_cursor_clamps_to_available(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "AB", 2);
+    buffer_set_cursor(buffer, 0);
+    TEST_ASSERT_EQUAL_size_t(2, buffer_delete_after_cursor(buffer, 10));
     TEST_ASSERT_EQUAL_size_t(0, buffer_size(buffer));
     buffer_destroy(buffer);
 }
-
-// --- Cursor movement ---
 
 static void test_set_cursor_clamps_past_end(void) {
     buffer_t *buffer = buffer_create(16);
@@ -158,20 +172,6 @@ static void test_set_cursor_returns_false_when_no_movement(void) {
     buffer_insert_bytes(buffer, "A", 1);
     // Cursor already at position 1 after insert
     TEST_ASSERT_FALSE(buffer_set_cursor(buffer, 1));
-    buffer_destroy(buffer);
-}
-
-static void test_move_cursor_negative_clamps_to_zero(void) {
-    buffer_t *buffer = buffer_create(16);
-    buffer_insert_bytes(buffer, "A", 1);
-    buffer_move_cursor(buffer, -100);
-    TEST_ASSERT_EQUAL_size_t(0, buffer_cursor_pos(buffer));
-    buffer_destroy(buffer);
-}
-
-static void test_move_cursor_returns_false_when_no_movement(void) {
-    buffer_t *buffer = buffer_create(16);
-    TEST_ASSERT_FALSE(buffer_move_cursor(buffer, -5));
     buffer_destroy(buffer);
 }
 
@@ -190,16 +190,12 @@ static void test_insert_after_cursor_movement(void) {
     buffer_destroy(buffer);
 }
 
-// --- char_at out-of-range ---
-
 static void test_char_at_out_of_range_returns_null_byte(void) {
     buffer_t *buffer = buffer_create(16);
     buffer_insert_bytes(buffer, "A", 1);
     TEST_ASSERT_EQUAL('\0', buffer_char_at(buffer, 100));
     buffer_destroy(buffer);
 }
-
-// --- UTF-8 boundaries ---
 
 static void test_prev_boundary_at_zero(void) {
     buffer_t *buffer = buffer_create(16);
@@ -253,8 +249,6 @@ static void test_next_boundary_multibyte(void) {
     TEST_ASSERT_EQUAL_size_t(4, buffer_next_codepoint_boundary(buffer, 1));
     buffer_destroy(buffer);
 }
-
-// --- Copy contiguous ---
 
 static void test_copy_contiguous_empty(void) {
     buffer_t *buffer = buffer_create(16);
@@ -335,13 +329,13 @@ int main(void) {
     RUN_TEST(test_delete_before_cursor_multi_byte);
     RUN_TEST(test_delete_before_cursor_clamps_to_available);
 
-    RUN_TEST(test_delete_forward_at_end_returns_false);
-    RUN_TEST(test_delete_forward_decreases_size);
+    RUN_TEST(test_delete_after_cursor_clamps_to_available);
+    RUN_TEST(test_delete_after_cursor_at_end_returns_zero);
+    RUN_TEST(test_delete_after_cursor_multi_byte);
+    RUN_TEST(test_delete_after_cursor_one_byte);
 
     RUN_TEST(test_set_cursor_clamps_past_end);
     RUN_TEST(test_set_cursor_returns_false_when_no_movement);
-    RUN_TEST(test_move_cursor_negative_clamps_to_zero);
-    RUN_TEST(test_move_cursor_returns_false_when_no_movement);
     RUN_TEST(test_insert_after_cursor_movement);
 
     RUN_TEST(test_char_at_out_of_range_returns_null_byte);

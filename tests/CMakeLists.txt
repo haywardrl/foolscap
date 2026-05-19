@@ -3,12 +3,13 @@ function(add_unit_test name)
     add_executable(test_${name}
         test_${name}.c
         ${CMAKE_SOURCE_DIR}/tests/unity/src/unity.c
-        # any extra source files passed in
+        ${CMAKE_SOURCE_DIR}/src/ports/sdl/mem_sdl.c     # always linked
         ${ARGN}
     )
     target_include_directories(test_${name} PRIVATE
         ${CMAKE_SOURCE_DIR}/tests/unity/src
         ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
     )
     target_compile_options(test_${name} PRIVATE -fsanitize=address,undefined -g -fno-omit-frame-pointer)
     target_link_options(test_${name} PRIVATE -fsanitize=address,undefined)
@@ -33,4 +34,19 @@ add_unit_test(put_pixel
 add_unit_test(draw_glyph
     ${CMAKE_SOURCE_DIR}/src/app/render/render.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
+)
+add_unit_test(compute_cursor_position
+    ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
+)
+add_unit_test(render_fill_rect
+    ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
+)
+add_unit_test(editor
+    ${CMAKE_SOURCE_DIR}/src/app/editor/editor.c
+    ${CMAKE_SOURCE_DIR}/src/app/buffer/buffer.c
+    ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
+    ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/tests/mocks/display_mock.c
 )

@@ -1,5 +1,7 @@
 #include "buffer.h"
 
+#include "hal/hal_mem.h"
+
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,15 +13,14 @@ struct buffer {
     size_t gap_end;
 };
 
-// --- Lifecycle ---
-
 buffer_t *buffer_create(size_t capacity) {
-    buffer_t *buffer = malloc(sizeof(*buffer));
+    buffer_t *buffer = hal_mem_alloc(sizeof(*buffer), HAL_MEM_DEFAULT);
     if (buffer == NULL) {
         return NULL;
     }
-    if ((buffer->data = malloc(capacity)) == NULL) {
-        free(buffer);
+    buffer->data = hal_mem_alloc(capacity, HAL_MEM_LARGE);
+    if (buffer->data == NULL) {
+        hal_mem_free(buffer);
         return NULL;
     }
     buffer->capacity = capacity;
@@ -29,19 +30,16 @@ buffer_t *buffer_create(size_t capacity) {
 }
 
 void buffer_destroy(buffer_t *buffer) {
-    if (buffer == NULL) {
+    if (buffer == NULL)
         return;
-    }
-    free(buffer->data);
-    free(buffer);
+    hal_mem_free(buffer->data);
+    hal_mem_free(buffer);
 }
 
-// --- Modification ---
-
-// Atomic: checks capacity first, then memcpys. On failure, no state change.
+// no partial insert; either all len bytes fit or none
 bool buffer_insert_bytes(buffer_t *buffer, const char *bytes, size_t len) {
     if (len == 0) {
-        return true; // vacuously successful; no work to do
+        return true;
     }
     size_t gap_size = buffer->gap_end - buffer->gap_start;
     if (len > gap_size) {
@@ -61,31 +59,13 @@ size_t buffer_delete_before_cursor(buffer_t *buffer, size_t n) {
     return n;
 }
 
-bool buffer_delete_forward(buffer_t *buffer) {
-    if (buffer->gap_end == buffer->capacity) {
-        return false;
+size_t buffer_delete_after_cursor(buffer_t *buffer, size_t n) {
+    size_t deletable = buffer->capacity - buffer->gap_end;
+    if (n > deletable) {
+        n = deletable;
     }
-    buffer->gap_end += 1;
-    return true;
-}
-
-// --- Cursor movement ---
-
-bool buffer_move_cursor(buffer_t *buffer, int32_t delta) {
-    size_t current = buffer_cursor_pos(buffer);
-    size_t new_pos;
-    if (delta < 0) {
-        size_t magnitude = (size_t)(-delta);
-        if (magnitude > current) {
-            new_pos = 0;
-        } else {
-            new_pos = current - magnitude;
-        }
-    } else {
-        new_pos = current + (size_t)delta;
-    }
-    buffer_set_cursor(buffer, new_pos);
-    return buffer_cursor_pos(buffer) != current;
+    buffer->gap_end += n;
+    return n;
 }
 
 bool buffer_set_cursor(buffer_t *buffer, size_t pos) {
@@ -108,10 +88,7 @@ bool buffer_set_cursor(buffer_t *buffer, size_t pos) {
     return buffer->gap_start != before;
 }
 
-// --- UTF-8 boundary helpers ---
-
-// A UTF-8 continuation byte matches 10xxxxxx — i.e. (b & 0xC0) == 0x80.
-// A boundary is any byte that is NOT a continuation byte.
+// continuation byte: 10xxxxxx
 static bool is_continuation_byte(unsigned char b) {
     return (b & 0xC0) == 0x80;
 }
@@ -124,9 +101,7 @@ size_t buffer_prev_codepoint_boundary(const buffer_t *buffer, size_t pos) {
     if (pos == 0) {
         return 0;
     }
-    // Walk backward at most 4 bytes (max UTF-8 sequence length).
-    // If we can't find a boundary in 4 bytes, the data is malformed —
-    // return pos - 1 as a defensive fallback.
+    // walk back at most 4 bytes (max UTF-8 seq)
     size_t i = pos;
     for (int steps = 0; steps < 4 && i > 0; steps++) {
         i -= 1;
@@ -143,8 +118,6 @@ size_t buffer_next_codepoint_boundary(const buffer_t *buffer, size_t pos) {
     if (pos >= size) {
         return size;
     }
-    // Step past the current byte, then walk forward up to 4 bytes until we
-    // find a non-continuation byte (start of next codepoint) or hit the end.
     size_t i = pos + 1;
     for (int steps = 0; steps < 4 && i < size; steps++) {
         unsigned char b = (unsigned char)buffer_char_at(buffer, i);
@@ -153,10 +126,8 @@ size_t buffer_next_codepoint_boundary(const buffer_t *buffer, size_t pos) {
         }
         i += 1;
     }
-    return i; // either reached end or walked 4 bytes (malformed)
+    return i;
 }
-
-// --- Flatten ---
 
 size_t buffer_copy_contiguous(const buffer_t *buffer, char *dst, size_t dst_capacity) {
     size_t needed = buffer_size(buffer);
@@ -173,8 +144,6 @@ size_t buffer_copy_contiguous(const buffer_t *buffer, char *dst, size_t dst_capa
     }
     return needed;
 }
-
-// --- Accessors ---
 
 size_t buffer_cursor_pos(const buffer_t *buffer) {
     return buffer->gap_start;

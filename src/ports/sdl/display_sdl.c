@@ -17,7 +17,6 @@ static hal_framebuffer_t g_framebuffer;
 static uint8_t *g_pixel_buffer;
 static uint8_t *g_rgb_buffer;
 
-// Internal helpers
 static void copy_grayscale_to_rgb24(const uint8_t *gray, uint8_t *rgb, size_t pixel_count) {
     for (size_t i = 0; i < pixel_count; i++) {
         rgb[i * 3 + 0] = rgb[i * 3 + 1] = rgb[i * 3 + 2] = gray[i];
@@ -66,6 +65,7 @@ int hal_display_init(void) {
     g_framebuffer.width = SCREEN_WIDTH;
     g_framebuffer.height = SCREEN_HEIGHT;
     g_framebuffer.stride = SCREEN_WIDTH;
+    SDL_StartTextInput();
     return 0;
 
 fail_after_rgb_buffer:
@@ -82,6 +82,7 @@ fail_after_init:
 }
 
 void hal_display_shutdown(void) {
+    SDL_StopTextInput();
     SDL_DestroyTexture(g_texture);
     free(g_rgb_buffer);
     free(g_pixel_buffer);

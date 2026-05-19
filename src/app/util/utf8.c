@@ -3,7 +3,6 @@
 #include <assert.h>
 #include <stdint.h>
 
-// Initialise an iterator over [bytes, bytes + len).
 void utf8_iter_init(utf8_iter_t *it, const char *bytes, size_t len) {
     assert(it != NULL);
     assert(bytes != NULL || len == 0); // NULL bytes Ok if len is 0
@@ -11,9 +10,7 @@ void utf8_iter_init(utf8_iter_t *it, const char *bytes, size_t len) {
     it->end = bytes + len;
 }
 
-// Decode the next codepoint. On UTF8_INVALID, advances by one byte.
 utf8_status_t utf8_next(utf8_iter_t *it, uint32_t *codepoint_out) {
-    // Check to see if out of bytes
     if (it->p >= it->end) {
         return UTF8_END;
     }
@@ -33,13 +30,11 @@ utf8_status_t utf8_next(utf8_iter_t *it, uint32_t *codepoint_out) {
      *4-byte: must be ≥ 0x10000
      */
 
-    // Read the lead byte (cast to unsigned so but checks work correctly)
     uint8_t b0 = (uint8_t)*it->p;
     int seq_len;
-    uint32_t cp;            // continuation payload
-    uint32_t min_codepoint; // validate for overlong
+    uint32_t cp;
+    uint32_t min_codepoint;
 
-    // 1-byte sequence (top bit is 0)
     if (b0 < 0x80) {
         *codepoint_out = b0;
         it->p += 1;
@@ -79,10 +74,9 @@ utf8_status_t utf8_next(utf8_iter_t *it, uint32_t *codepoint_out) {
             it->p += 1;
             return UTF8_INVALID;
         }
-        cp = (cp << 6) | (bn & 0x3F); // continuation byte has 6 bits of payload
+        cp = (cp << 6) | (bn & 0x3F);
     }
 
-    // Validate
     if (cp < min_codepoint) {
         it->p += 1;
         return UTF8_INVALID; // overlong

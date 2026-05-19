@@ -1,4 +1,3 @@
-#include "app/render/render.h"
 #include "app/render/render_internal.h"
 #include "hal/hal_display.h"
 
@@ -22,9 +21,7 @@ void setUp(void) {
 void tearDown(void) {
 }
 
-// --- Fixtures ---
-
-// 3x3 solid filled glyph: top 3 bits of each row set.
+// 3x3 solid filled glyph
 static const uint8_t bitmap_3x3_filled[] = {0xE0, 0xE0, 0xE0};
 static const font_glyph_t glyph_3x3_filled = {
     .codepoint = 'X',
@@ -102,10 +99,7 @@ static const font_t font_offset = {
     .bitmap_data_size = sizeof(bitmap_1x1),
 };
 
-// 11-wide glyph: 11 set bits across 2 bytes. Row stride = (11+7)/8 = 2.
-// Row pattern: 0xFF, 0xE0 = 11111111 11100000 → bits 0..10 set, bits 11..15 padding.
-// A buggy draw_glyph that iterates col < 16 instead of col < width would
-// draw 5 extra pixels into the padding zone.
+// 11-wide glyph: 2-byte row; padding in second byte
 static const uint8_t bitmap_11w[] = {0xFF, 0xE0};
 static const font_glyph_t glyph_11w = {
     .codepoint = 'W',
@@ -123,8 +117,6 @@ static const font_t font_11w = {
     .bitmap_data = bitmap_11w,
     .bitmap_data_size = sizeof(bitmap_11w),
 };
-
-// --- Tests ---
 
 static void test_3x3_filled_draws_nine_pixels(void) {
     int adv = render_draw_glyph(&fb, &font_3x3, &glyph_3x3_filled, 5, 5);
@@ -150,7 +142,6 @@ static void test_1x1_draws_exactly_one_pixel(void) {
 
 static void test_3x3_diagonal_set_bits_only(void) {
     render_draw_glyph(&fb, &font_3x3_diag, &glyph_3x3_diag, 5, 5);
-    // Expect exactly (5,5), (6,6), (7,7) to be 0; nothing else.
     int set_count = 0;
     for (size_t i = 0; i < sizeof(fb_pixels); i++) {
         if (fb_pixels[i] == 0)
@@ -163,8 +154,6 @@ static void test_3x3_diagonal_set_bits_only(void) {
 }
 
 static void test_x_and_y_offset_applied(void) {
-    // Draw at (5, 5) but glyph has x_offset=2, y_offset=3.
-    // The single pixel should land at (7, 8).
     render_draw_glyph(&fb, &font_offset, &glyph_offset, 5, 5);
     TEST_ASSERT_EQUAL_UINT8(0, fb_pixels[(5 + 3) * FB_W + (5 + 2)]);
     int set_count = 0;
@@ -176,11 +165,8 @@ static void test_x_and_y_offset_applied(void) {
 }
 
 static void test_edge_clipping_no_crash(void) {
-    // Draw 3x3 glyph at x = FB_W - 2: column 2 of the glyph would land at FB_W,
-    // which is out of bounds. put_pixel should clip; no crash.
     int adv = render_draw_glyph(&fb, &font_3x3, &glyph_3x3_filled, FB_W - 2, 5);
     TEST_ASSERT_EQUAL(glyph_3x3_filled.x_advance, adv);
-    // Two in-bounds columns × 3 rows = 6 pixels expected drawn.
     int set_count = 0;
     for (size_t i = 0; i < sizeof(fb_pixels); i++) {
         if (fb_pixels[i] == 0)
@@ -194,8 +180,6 @@ static void test_returns_x_advance(void) {
     TEST_ASSERT_EQUAL(glyph_3x3_filled.x_advance, adv);
 }
 
-// 11-wide glyph: 11 set bits, 5 padding bits in the second byte.
-// Verifies the inner loop iterates col < width (not col < bytes*8).
 static void test_11_wide_glyph_no_padding_leak(void) {
     render_draw_glyph(&fb, &font_11w, &glyph_11w, 0, 5);
     int set_count = 0;

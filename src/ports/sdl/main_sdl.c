@@ -1,47 +1,90 @@
+#include "app/editor/editor.h"
 #include "app/render/fonts/ibm_plex_mono_20.h"
 #include "hal/hal_display.h"
-#include "render.h"
 
 #include <SDL2/SDL.h>
+
+#define DOCUMENT_CAPACITY (256 * 1024) // 256 KB
 
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
     int rc = 1;
-    if (hal_display_init() != 0) {
+    editor_t *ed = NULL;
+
+    if (hal_display_init() != 0)
         return 1;
-    }
-    hal_display_clear(255);
-    hal_framebuffer_t *fb = hal_display_get_framebuffer();
-    if (fb == NULL) {
+    SDL_StartTextInput();
+
+    ed = editor_create(&IBM_PLEX_MONO_20, DOCUMENT_CAPACITY);
+    if (ed == NULL)
         goto cleanup;
-    }
-    static const char msg[] = "Hello, Foolscap!";
-    render_draw_string(fb, &IBM_PLEX_MONO_20, 10, 30, msg, sizeof(msg) - 1);
+
+    // Initial render
+    editor_render(ed);
     hal_display_flush();
 
-    SDL_Event event;
+    // Event loop
     int running = 1;
     while (running) {
-        SDL_WaitEvent(&event);
-        switch (event.type) {
-        case SDL_QUIT:
-            running = 0;
-            break;
-        case SDL_KEYDOWN:
-            if (event.key.keysym.sym == SDLK_ESCAPE)
+        SDL_WaitEvent(NULL);
+
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            switch (event.type) {
+            case SDL_QUIT:
                 running = 0;
-            break;
-        case SDL_WINDOWEVENT:
-            if (event.window.event == SDL_WINDOWEVENT_EXPOSED) {
-                hal_display_flush();
+                break;
+
+            case SDL_TEXTINPUT:
+                // event.text.text is null-terminated UTF-8
+                editor_insert_utf8(ed, event.text.text, strlen(event.text.text));
+                break;
+
+            case SDL_KEYDOWN:
+                switch (event.key.keysym.sym) {
+                case SDLK_RETURN:
+                case SDLK_KP_ENTER:
+                    editor_insert_utf8(ed, "\n", 1);
+                    break;
+                case SDLK_ESCAPE:
+                    running = 0;
+                    break;
+                case SDLK_BACKSPACE:
+                    editor_backspace(ed);
+                    break;
+                case SDLK_DELETE:
+                    editor_delete_forward(ed);
+                    break;
+                case SDLK_LEFT:
+                    editor_move_cursor(ed, EDITOR_CURSOR_LEFT);
+                    break;
+                case SDLK_RIGHT:
+                    editor_move_cursor(ed, EDITOR_CURSOR_RIGHT);
+                    break;
+                }
+                break;
+
+            case SDL_WINDOWEVENT:
+                if (event.window.event == SDL_WINDOWEVENT_EXPOSED) {
+                    hal_display_flush();
+                }
+                break;
             }
-            break;
+        }
+
+        if (editor_is_dirty(ed)) {
+            editor_render(ed);
+            hal_display_flush();
         }
     }
+
     rc = 0;
 cleanup:
+    if (ed)
+        editor_destroy(ed);
+    SDL_StopTextInput();
     hal_display_shutdown();
     return rc;
 }
