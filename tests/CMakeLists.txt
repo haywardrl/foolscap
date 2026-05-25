@@ -35,12 +35,12 @@ add_unit_test(draw_glyph
     ${CMAKE_SOURCE_DIR}/src/app/render/render.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
 )
-add_unit_test(compute_cursor_position
+add_unit_test(render_fill_rect
     ${CMAKE_SOURCE_DIR}/src/app/render/render.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
 )
-add_unit_test(render_fill_rect
-    ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+add_unit_test(layout
+    ${CMAKE_SOURCE_DIR}/src/app/layout/layout.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
 )
 add_unit_test(editor
@@ -48,5 +48,6 @@ add_unit_test(editor
     ${CMAKE_SOURCE_DIR}/src/app/buffer/buffer.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
     ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/layout/layout.c
     ${CMAKE_SOURCE_DIR}/tests/mocks/display_mock.c
 )

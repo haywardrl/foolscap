@@ -23,7 +23,7 @@ int main(int argc, char *argv[]) {
 
     // Initial render
     editor_render(ed);
-    hal_display_flush();
+    hal_display_full_flush();
 
     // Event loop
     int running = 1;
@@ -63,12 +63,18 @@ int main(int argc, char *argv[]) {
                 case SDLK_RIGHT:
                     editor_move_cursor(ed, EDITOR_CURSOR_RIGHT);
                     break;
+                case SDLK_UP:
+                    editor_move_cursor(ed, EDITOR_CURSOR_UP);
+                    break;
+                case SDLK_DOWN:
+                    editor_move_cursor(ed, EDITOR_CURSOR_DOWN);
+                    break;
                 }
                 break;
 
             case SDL_WINDOWEVENT:
                 if (event.window.event == SDL_WINDOWEVENT_EXPOSED) {
-                    hal_display_flush();
+                    hal_display_full_flush();
                 }
                 break;
             }
@@ -76,7 +82,10 @@ int main(int argc, char *argv[]) {
 
         if (editor_is_dirty(ed)) {
             editor_render(ed);
-            hal_display_flush();
+            // TODO: replace with editor_dirty_rect(ed) once the editor
+            // tracks the changed region for partial e-ink refresh.
+            hal_framebuffer_t *fb = hal_display_get_framebuffer();
+            hal_display_flush_region(0, 0, fb->width, fb->height);
         }
     }
 

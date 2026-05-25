@@ -1,7 +1,6 @@
 #pragma once
 
 #include "app/render/font.h"
-#include "hal/hal_display.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -11,6 +10,8 @@ typedef struct editor editor_t;
 typedef enum {
     EDITOR_CURSOR_LEFT,
     EDITOR_CURSOR_RIGHT,
+    EDITOR_CURSOR_UP,
+    EDITOR_CURSOR_DOWN,
 } editor_cursor_direction_t;
 
 // returns NULL on alloc failure, null font, or zero capacity
@@ -32,7 +33,8 @@ bool editor_delete_forward(editor_t *ed);
 // Move the cursor by one codepoint in the given direction.
 bool editor_move_cursor(editor_t *ed, editor_cursor_direction_t direction);
 
-// unconditional; clears dirty flag
+// TODO: partial e-ink refresh.
+
 void editor_render(editor_t *ed);
 
 // Status bar fields

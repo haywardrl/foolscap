@@ -94,3 +94,25 @@ utf8_status_t utf8_next(utf8_iter_t *it, uint32_t *codepoint_out) {
     it->p += seq_len;
     return UTF8_OK;
 }
+
+size_t utf8_count_codepoints(const char *bytes, size_t len) {
+    size_t n = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (((unsigned char)bytes[i] & 0xC0) != 0x80)
+            n++;
+    }
+    return n;
+}
+
+size_t utf8_advance_codepoints(const char *bytes, size_t len, size_t n) {
+    size_t seen = 0;
+    size_t i = 0;
+    while (i < len && seen < n) {
+        i++;
+        // step past any continuation bytes
+        while (i < len && ((unsigned char)bytes[i] & 0xC0) == 0x80)
+            i++;
+        seen++;
+    }
+    return i;
+}

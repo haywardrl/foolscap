@@ -99,7 +99,7 @@ void hal_display_clear(uint8_t value) {
     memset(g_pixel_buffer, value, SCREEN_WIDTH * SCREEN_HEIGHT);
 }
 
-int hal_display_flush(void) {
+int hal_display_full_flush(void) {
     copy_grayscale_to_rgb24(g_pixel_buffer, g_rgb_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
     if (SDL_UpdateTexture(g_texture, NULL, g_rgb_buffer, SCREEN_WIDTH * 3) != 0) {
         fprintf(stderr, "SDL_UpdateTexture failed: %s\n", SDL_GetError());
@@ -110,4 +110,12 @@ int hal_display_flush(void) {
     SDL_RenderCopy(g_renderer, g_texture, NULL, NULL);
     SDL_RenderPresent(g_renderer);
     return 0;
+}
+
+int hal_display_flush_region(int x, int y, int w, int h) {
+    (void)x;
+    (void)y;
+    (void)w;
+    (void)h;
+    return hal_display_full_flush();
 }

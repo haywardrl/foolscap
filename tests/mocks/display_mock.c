@@ -32,10 +32,6 @@ void hal_display_clear(uint8_t value) {
     memset(mock_pixels, value, sizeof(mock_pixels));
 }
 
-int hal_display_flush(void) {
-    return 0;
-}
-
 void display_mock_reset(void) {
     memset(mock_pixels, 128, sizeof(mock_pixels));
 }

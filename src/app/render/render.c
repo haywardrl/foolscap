@@ -101,36 +101,3 @@ void render_fill_rect(hal_framebuffer_t *fb, int x, int y, int w, int h, uint8_t
     }
 }
 
-void render_compute_cursor_position(const font_t *font, int start_x, int baseline_y,
-                                    const char *text, size_t len, size_t cursor_byte, int *out_x,
-                                    int *out_y) {
-    if (cursor_byte > len)
-        cursor_byte = len;
-
-    int cursor_x = start_x;
-    int cursor_y = baseline_y;
-
-    utf8_iter_t it;
-    utf8_iter_init(&it, text, cursor_byte); // stop iteration at cursor_byte
-
-    uint32_t codepoint = 0;
-    utf8_status_t status;
-    while ((status = utf8_next(&it, &codepoint)) != UTF8_END) {
-        if (status == UTF8_INVALID) {
-            continue;
-        }
-        if (codepoint == '\n') {
-            cursor_x = start_x;
-            cursor_y += font->line_height;
-            continue;
-        }
-        const font_glyph_t *glyph = render_find_glyph(font, codepoint);
-        if (glyph == NULL) {
-            continue;
-        }
-        cursor_x += glyph->x_advance;
-    }
-
-    *out_x = cursor_x;
-    *out_y = cursor_y;
-}
