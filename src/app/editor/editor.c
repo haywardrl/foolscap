@@ -22,7 +22,8 @@ struct editor {
     const font_t *font;
     uint8_t cursor_width; // monospace assumed
     size_t preferred_col;
-    bool dirty;
+    bool content_dirty;
+    bool cursor_dirty;
 };
 
 editor_t *editor_create(const font_t *font, size_t document_capacity) {
@@ -56,7 +57,8 @@ editor_t *editor_create(const font_t *font, size_t document_capacity) {
     ed->font = font;
     ed->cursor_width = font->glyphs[0].x_advance;
     ed->preferred_col = SIZE_MAX; // unset
-    ed->dirty = false;
+    ed->content_dirty = true; // first render must build the initial (empty) layout
+    ed->cursor_dirty = false;
     return ed;
 }
 
@@ -74,7 +76,8 @@ bool editor_insert_utf8(editor_t *ed, const char *bytes, size_t len) {
     bool changed = buffer_insert_bytes(ed->buf, bytes, len);
     if (changed) {
         ed->preferred_col = SIZE_MAX;
-        ed->dirty = true;
+        ed->content_dirty = true;
+        ed->cursor_dirty = true;
     }
     return changed;
 }
@@ -91,7 +94,8 @@ bool editor_backspace(editor_t *ed) {
         return false;
     }
     ed->preferred_col = SIZE_MAX;
-    ed->dirty = true;
+    ed->content_dirty = true;
+    ed->cursor_dirty = true;
     return true;
 }
 
@@ -108,7 +112,8 @@ bool editor_delete_forward(editor_t *ed) {
         return false;
     }
     ed->preferred_col = SIZE_MAX;
-    ed->dirty = true;
+    ed->content_dirty = true;
+    ed->cursor_dirty = true;
     return true;
 }
 
@@ -129,7 +134,7 @@ bool editor_move_cursor(editor_t *ed, editor_cursor_direction_t direction) {
         }
         buffer_set_cursor(ed->buf, target);
         ed->preferred_col = SIZE_MAX;
-        ed->dirty = true;
+        ed->cursor_dirty = true;
         return true;
     }
 
@@ -165,16 +170,18 @@ bool editor_move_cursor(editor_t *ed, editor_cursor_direction_t direction) {
     size_t offset_in_line =
         utf8_advance_codepoints(ed->scratch + target_line->byte_start, target_len, target_col);
     buffer_set_cursor(ed->buf, target_line->byte_start + offset_in_line);
-    ed->dirty = true;
+    ed->cursor_dirty = true;
     return true;
 }
 
 void editor_render(editor_t *ed) {
     hal_framebuffer_t *fb = hal_display_get_framebuffer();
-    size_t len = buffer_copy_contiguous(ed->buf, ed->scratch, ed->scratch_capacity);
-    int wrap_width = fb->width - MARGIN_X; // right edge of text area
-    layout_destroy(&ed->layout);
-    layout_compute(&ed->layout, ed->scratch, len, ed->font, wrap_width, MARGIN_X, MARGIN_TOP);
+    if (ed->content_dirty) {
+        size_t len = buffer_copy_contiguous(ed->buf, ed->scratch, ed->scratch_capacity);
+        int wrap_width = fb->width - MARGIN_X; // right edge of text area
+        layout_destroy(&ed->layout);
+        layout_compute(&ed->layout, ed->scratch, len, ed->font, wrap_width, MARGIN_X, MARGIN_TOP);
+    }
 
     render_fill_rect(fb, 0, 0, fb->width, fb->height, BACKGROUND);
 
@@ -195,7 +202,8 @@ void editor_render(editor_t *ed) {
     render_fill_rect(fb, cursor_x, cursor_y + CURSOR_Y_OFFSET, ed->cursor_width, CURSOR_HEIGHT,
                      FOREGROUND);
 
-    ed->dirty = false;
+    ed->content_dirty = false;
+    ed->cursor_dirty = false;
 }
 
 size_t editor_get_size(const editor_t *ed) {
@@ -203,7 +211,7 @@ size_t editor_get_size(const editor_t *ed) {
 }
 
 bool editor_is_dirty(const editor_t *ed) {
-    return ed->dirty;
+    return ed->content_dirty || ed->cursor_dirty;
 }
 
 const buffer_t *editor_test_get_buffer(const editor_t *ed) {

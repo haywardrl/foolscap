@@ -74,10 +74,9 @@ static void test_editor_insert_utf8_sets_dirty(void) {
     editor_destroy(ed);
 }
 
-static void test_editor_insert_utf8_overflow_returns_false_and_no_dirty(void) {
+static void test_editor_insert_utf8_overflow_returns_false(void) {
     editor_t *ed = editor_create(&font, 1);
     TEST_ASSERT_FALSE(editor_insert_utf8(ed, "AB", 2));
-    TEST_ASSERT_FALSE(editor_is_dirty(ed));
     editor_destroy(ed);
 }
 
@@ -179,7 +178,7 @@ int main(void) {
     RUN_TEST(test_editor_destroy_null_safe);
     RUN_TEST(test_editor_insert_utf8_updates_buffer);
     RUN_TEST(test_editor_insert_utf8_sets_dirty);
-    RUN_TEST(test_editor_insert_utf8_overflow_returns_false_and_no_dirty);
+    RUN_TEST(test_editor_insert_utf8_overflow_returns_false);
     RUN_TEST(test_editor_backspace_at_zero_returns_false);
     RUN_TEST(test_editor_backspace_deletes_one_codepoint_ascii);
     RUN_TEST(test_editor_backspace_deletes_one_codepoint_multibyte_euro);
