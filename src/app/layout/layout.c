@@ -14,6 +14,11 @@ bool layout_compute(layout_t *out, const char *text, size_t len, const font_t *f
     out->lines = NULL;
     out->count = 0;
     out->capacity = 0;
+    out->font = font;
+    out->wrap_width = wrap_width;
+    out->margin_x = margin_x;
+    out->margin_top = margin_top;
+    out->x_advance = font->glyphs[0].x_advance;
 
     utf8_iter_t it;
     utf8_iter_init(&it, text, len);
@@ -106,7 +111,7 @@ void layout_destroy(layout_t *out) {
 static int layout_lines_append(layout_t *out, const layout_line_t *line) {
     if (out->count + 1 > out->capacity) {
         size_t new_capacity = out->capacity ? out->capacity * 2 : 16;
-        layout_line_t *grown = hal_mem_alloc(new_capacity * sizeof(layout_line_t), HAL_MEM_DEFAULT);
+        layout_line_t *grown = hal_mem_alloc(new_capacity * sizeof(layout_line_t), HAL_MEM_LARGE);
         if (!grown)
             return -1;
         if (out->lines) {
@@ -120,11 +125,142 @@ static int layout_lines_append(layout_t *out, const layout_line_t *line) {
     return 0;
 }
 
+// rightmost line whose byte_start <= byte
 size_t layout_find_line_for_byte(const layout_t *out, size_t byte) {
-    for (size_t i = out->count; i > 0; i--) {
-        if (out->lines[i - 1].byte_start <= byte) {
-            return i - 1;
+    size_t lo = 0, hi = out->count;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        if (out->lines[mid].byte_start <= byte) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
         }
     }
-    return 0;
+    return lo == 0 ? 0 : lo - 1; // lo = first line past byte so step back one
+}
+
+// full relayout from scratch, reusing the layout's stored wrap context
+static bool layout_recompute(layout_t *layout, const char *text, size_t len) {
+    const font_t *font = layout->font;
+    int wrap_width = layout->wrap_width;
+    int margin_x = layout->margin_x;
+    int margin_top = layout->margin_top;
+    layout_destroy(layout);
+    return layout_compute(layout, text, len, font, wrap_width, margin_x, margin_top);
+}
+
+// open a gap at idx so lines[idx] becomes a free slot and count grows by one.
+static bool layout_insert_line_at(layout_t *layout, size_t idx) {
+    if (layout->count + 1 > layout->capacity) {
+        size_t new_cap = layout->capacity ? layout->capacity * 2 : 16;
+        layout_line_t *grown = hal_mem_alloc(new_cap * sizeof(layout_line_t), HAL_MEM_LARGE);
+        if (!grown)
+            return false;
+        if (layout->lines) {
+            memcpy(grown, layout->lines, layout->count * sizeof(layout_line_t));
+            hal_mem_free(layout->lines);
+        }
+        layout->lines = grown;
+        layout->capacity = new_cap;
+    }
+    if (idx < layout->count) {
+        memmove(&layout->lines[idx + 1], &layout->lines[idx],
+                (layout->count - idx) * sizeof(layout_line_t));
+    }
+    layout->count++;
+    return true;
+}
+
+// remove the entry at idx, count shrinks by one, idx must be < count.
+static void layout_remove_line_at(layout_t *layout, size_t idx) {
+    if (idx + 1 < layout->count) {
+        memmove(&layout->lines[idx], &layout->lines[idx + 1],
+                (layout->count - idx - 1) * sizeof(layout_line_t));
+    }
+    layout->count--;
+}
+
+bool layout_apply_edit(layout_t *layout, edit_t edit, const char *text, size_t len) {
+    size_t li = layout_find_line_for_byte(layout, edit.pos);
+    layout_line_t *line = &layout->lines[li];
+
+    if (edit.type == EDIT_INSERT) {
+        // a newline splits the line
+        if (memchr(text + edit.pos, '\n', edit.len) != NULL) {
+            size_t orig_byte_end = line->byte_end;
+            bool orig_ends_with_newline = line->ends_with_newline;
+            int orig_y = line->y;
+
+            if (!layout_insert_line_at(layout, li + 1)) {
+                return layout_recompute(layout, text, len);
+            }
+            // layout->lines may have moved, re-index instead of using original line
+            layout->lines[li].byte_end = edit.pos;
+            layout->lines[li].ends_with_newline = true;
+
+            layout->lines[li + 1].byte_start = edit.pos + 1;
+            layout->lines[li + 1].byte_end = orig_byte_end + 1;
+            layout->lines[li + 1].y = orig_y + layout->font->line_height;
+            layout->lines[li + 1].ends_with_newline = orig_ends_with_newline;
+
+            for (size_t i = li + 2; i < layout->count; i++) {
+                layout->lines[i].byte_start += 1;
+                layout->lines[i].byte_end += 1;
+                layout->lines[i].y += layout->font->line_height;
+            }
+            return true;
+        }
+        // growth pushes the line past the margin, so it wraps
+        size_t new_end = line->byte_end + edit.len;
+        size_t cps = utf8_count_codepoints(text + line->byte_start, new_end - line->byte_start);
+        if (layout->margin_x + (int)cps * layout->x_advance > layout->wrap_width) {
+            return layout_recompute(layout, text, len);
+        }
+    } else { // EDIT_DELETE
+        // merge: deleting the single newline terminating this line joins it
+        // with the next line, provided the combined line still fits
+        if (edit.len == 1 && edit.pos == line->byte_end && line->ends_with_newline) {
+            size_t merged_end = layout->lines[li + 1].byte_end - 1;
+            bool merged_ends_with_newline = layout->lines[li + 1].ends_with_newline;
+
+            // if the combined line overflows it would re-wrap
+            size_t cps =
+                utf8_count_codepoints(text + line->byte_start, merged_end - line->byte_start);
+            if (layout->margin_x + (int)cps * layout->x_advance > layout->wrap_width) {
+                return layout_recompute(layout, text, len);
+            }
+
+            layout->lines[li].byte_end = merged_end;
+            layout->lines[li].ends_with_newline = merged_ends_with_newline;
+            layout_remove_line_at(layout, li + 1);
+
+            for (size_t i = li + 1; i < layout->count; i++) {
+                layout->lines[i].byte_start -= 1;
+                layout->lines[i].byte_end -= 1;
+                layout->lines[i].y -= layout->font->line_height;
+            }
+            return true;
+        }
+        // deletion reaches past the line's content, so it removed a newline or
+        // spans lines that must merge
+        if (edit.pos + edit.len > line->byte_end) {
+            return layout_recompute(layout, text, len);
+        }
+        // a soft-wrapped line can de-wrap when it shrinks, pulling words up from
+        // the next line
+        bool is_last = (li + 1 == layout->count);
+        if (!line->ends_with_newline && !is_last) {
+            return layout_recompute(layout, text, len);
+        }
+    }
+
+    // offsets only - the edited line grows/shrinks so every line below
+    // shifts by the same amount. No break moved, so y and ends_with_newline hold
+    ptrdiff_t delta = (edit.type == EDIT_INSERT) ? (ptrdiff_t)edit.len : -(ptrdiff_t)edit.len;
+    line->byte_end += delta;
+    for (size_t i = li + 1; i < layout->count; i++) {
+        layout->lines[i].byte_start += delta;
+        layout->lines[i].byte_end += delta;
+    }
+    return true;
 }

@@ -43,6 +43,10 @@ add_unit_test(layout
     ${CMAKE_SOURCE_DIR}/src/app/layout/layout.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
 )
+add_unit_test(layout_apply_edit
+    ${CMAKE_SOURCE_DIR}/src/app/layout/layout.c
+    ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
+)
 add_unit_test(editor
     ${CMAKE_SOURCE_DIR}/src/app/editor/editor.c
     ${CMAKE_SOURCE_DIR}/src/app/buffer/buffer.c

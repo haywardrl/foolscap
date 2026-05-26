@@ -57,7 +57,7 @@ editor_t *editor_create(const font_t *font, size_t document_capacity) {
     ed->font = font;
     ed->cursor_width = font->glyphs[0].x_advance;
     ed->preferred_col = SIZE_MAX; // unset
-    ed->content_dirty = true; // first render must build the initial (empty) layout
+    ed->content_dirty = true;     // first render must build the initial (empty) layout
     ed->cursor_dirty = false;
     return ed;
 }
