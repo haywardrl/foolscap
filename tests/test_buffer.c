@@ -1,6 +1,7 @@
 #include "app/buffer/buffer.h"
 #include "unity_internals.h"
 
+#include <string.h>
 #include <unity.h>
 
 void setUp(void) {
@@ -309,6 +310,134 @@ static void test_copy_contiguous_exact_fit(void) {
     buffer_destroy(buffer);
 }
 
+static void test_spans_empty(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_spans_t s = buffer_spans(buffer);
+    TEST_ASSERT_EQUAL_size_t(0, s.first_len);
+    TEST_ASSERT_EQUAL_size_t(0, s.second_len);
+    buffer_destroy(buffer);
+}
+
+static void test_spans_gap_at_end(void) {
+    // cursor at end -> everything in the first span, second empty
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "ABCDE", 5);
+    buffer_spans_t s = buffer_spans(buffer);
+    TEST_ASSERT_EQUAL_size_t(5, s.first_len);
+    TEST_ASSERT_EQUAL_MEMORY("ABCDE", s.first, 5);
+    TEST_ASSERT_EQUAL_size_t(0, s.second_len);
+    buffer_destroy(buffer);
+}
+
+static void test_spans_gap_at_start(void) {
+    // cursor at 0 -> everything in the second span, first empty
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "ABCDE", 5);
+    buffer_set_cursor(buffer, 0);
+    buffer_spans_t s = buffer_spans(buffer);
+    TEST_ASSERT_EQUAL_size_t(0, s.first_len);
+    TEST_ASSERT_EQUAL_size_t(5, s.second_len);
+    TEST_ASSERT_EQUAL_MEMORY("ABCDE", s.second, 5);
+    buffer_destroy(buffer);
+}
+
+static void test_spans_gap_in_middle(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "ABCDE", 5);
+    buffer_set_cursor(buffer, 2); // gap between 'B' and 'C'
+    buffer_spans_t s = buffer_spans(buffer);
+    TEST_ASSERT_EQUAL_size_t(2, s.first_len);
+    TEST_ASSERT_EQUAL_MEMORY("AB", s.first, 2);
+    TEST_ASSERT_EQUAL_size_t(3, s.second_len);
+    TEST_ASSERT_EQUAL_MEMORY("CDE", s.second, 3);
+    buffer_destroy(buffer);
+}
+
+// the two spans joined must equal buffer_copy_contiguous at any cursor position
+static void test_spans_match_copy_contiguous(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "ABCDEF", 6);
+    for (size_t cursor = 0; cursor <= 6; cursor++) {
+        buffer_set_cursor(buffer, cursor);
+        char dst[16] = {0};
+        size_t n = buffer_copy_contiguous(buffer, dst, sizeof(dst));
+
+        buffer_spans_t s = buffer_spans(buffer);
+        TEST_ASSERT_EQUAL_size_t(n, s.first_len + s.second_len);
+        char joined[16] = {0};
+        memcpy(joined, s.first, s.first_len);
+        memcpy(joined + s.first_len, s.second, s.second_len);
+        TEST_ASSERT_EQUAL_MEMORY(dst, joined, n);
+    }
+    buffer_destroy(buffer);
+}
+
+static void test_region_wholly_before_gap(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "ABCDE", 5);
+    buffer_set_cursor(buffer, 5); // gap at end; all bytes before it
+    char scratch[16] = {'X'};
+    buffer_region_t r = buffer_region(buffer, 1, 4, scratch, sizeof(scratch)); // "BCD"
+    TEST_ASSERT_EQUAL_size_t(3, r.len);
+    TEST_ASSERT_EQUAL_MEMORY("BCD", r.ptr, 3);
+    TEST_ASSERT_EQUAL('X', scratch[0]); // untouched, no copy
+    buffer_destroy(buffer);
+}
+
+static void test_region_wholly_after_gap(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "ABCDE", 5);
+    buffer_set_cursor(buffer, 0); // gap at start; all bytes after it
+    char scratch[16] = {'X'};
+    buffer_region_t r = buffer_region(buffer, 1, 4, scratch, sizeof(scratch)); // "BCD"
+    TEST_ASSERT_EQUAL_size_t(3, r.len);
+    TEST_ASSERT_EQUAL_MEMORY("BCD", r.ptr, 3);
+    TEST_ASSERT_EQUAL('X', scratch[0]); // untouched, no copy
+    buffer_destroy(buffer);
+}
+
+static void test_region_straddles_gap_copies_to_scratch(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "ABCDEFGHIJ", 10);
+    buffer_set_cursor(buffer, 5); // gap between 'E' and 'F'
+    char scratch[16] = {0};
+    buffer_region_t r = buffer_region(buffer, 3, 8, scratch, sizeof(scratch)); // "DEFGH"
+    TEST_ASSERT_EQUAL_size_t(5, r.len);
+    TEST_ASSERT_EQUAL_PTR(scratch, r.ptr); // straddle copies into scratch
+    TEST_ASSERT_EQUAL_MEMORY("DEFGH", r.ptr, 5);
+    buffer_destroy(buffer);
+}
+
+static void test_region_empty_range(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "ABCDE", 5);
+    buffer_set_cursor(buffer, 2);
+    char scratch[16];
+    buffer_region_t r = buffer_region(buffer, 2, 2, scratch, sizeof(scratch));
+    TEST_ASSERT_EQUAL_size_t(0, r.len);
+    buffer_destroy(buffer);
+}
+
+// every sub-range at every cursor position must match a buffer_char_at read
+static void test_region_matches_char_at_sweep(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "ABCDEF", 6);
+    for (size_t cursor = 0; cursor <= 6; cursor++) {
+        buffer_set_cursor(buffer, cursor);
+        for (size_t start = 0; start <= 6; start++) {
+            for (size_t end = start; end <= 6; end++) {
+                char scratch[16];
+                buffer_region_t r = buffer_region(buffer, start, end, scratch, sizeof(scratch));
+                TEST_ASSERT_EQUAL_size_t(end - start, r.len);
+                for (size_t i = 0; i < r.len; i++) {
+                    TEST_ASSERT_EQUAL_CHAR(buffer_char_at(buffer, start + i), r.ptr[i]);
+                }
+            }
+        }
+    }
+    buffer_destroy(buffer);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_create_returns_non_null);
@@ -353,6 +482,18 @@ int main(void) {
     RUN_TEST(test_copy_contiguous_gap_in_middle);
     RUN_TEST(test_copy_contiguous_dst_too_small);
     RUN_TEST(test_copy_contiguous_exact_fit);
+
+    RUN_TEST(test_spans_empty);
+    RUN_TEST(test_spans_gap_at_end);
+    RUN_TEST(test_spans_gap_at_start);
+    RUN_TEST(test_spans_gap_in_middle);
+    RUN_TEST(test_spans_match_copy_contiguous);
+
+    RUN_TEST(test_region_wholly_before_gap);
+    RUN_TEST(test_region_wholly_after_gap);
+    RUN_TEST(test_region_straddles_gap_copies_to_scratch);
+    RUN_TEST(test_region_empty_range);
+    RUN_TEST(test_region_matches_char_at_sweep);
 
     return UNITY_END();
 }

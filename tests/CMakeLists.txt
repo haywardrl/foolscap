@@ -16,42 +16,51 @@ function(add_unit_test name)
     add_test(NAME ${name} COMMAND test_${name})
 endfunction()
 
+add_unit_test(rect ${CMAKE_SOURCE_DIR}/src/app/render/rect.c)
 add_unit_test(buffer ${CMAKE_SOURCE_DIR}/src/app/buffer/buffer.c)
 add_unit_test(utf8 ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c)
 add_unit_test(render
     ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/render/rect.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
     ${CMAKE_SOURCE_DIR}/src/app/render/fonts/ibm_plex_mono_20.c
 )
 add_unit_test(find_glyph
     ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/render/rect.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
 )
 add_unit_test(put_pixel
     ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/render/rect.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
 )
 add_unit_test(draw_glyph
     ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/render/rect.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
 )
 add_unit_test(render_fill_rect
     ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/render/rect.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
 )
 add_unit_test(layout
     ${CMAKE_SOURCE_DIR}/src/app/layout/layout.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
+    ${CMAKE_SOURCE_DIR}/src/app/buffer/buffer.c
 )
 add_unit_test(layout_apply_edit
     ${CMAKE_SOURCE_DIR}/src/app/layout/layout.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
+    ${CMAKE_SOURCE_DIR}/src/app/buffer/buffer.c
 )
 add_unit_test(editor
     ${CMAKE_SOURCE_DIR}/src/app/editor/editor.c
     ${CMAKE_SOURCE_DIR}/src/app/buffer/buffer.c
     ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c
     ${CMAKE_SOURCE_DIR}/src/app/render/render.c
+    ${CMAKE_SOURCE_DIR}/src/app/render/rect.c
     ${CMAKE_SOURCE_DIR}/src/app/layout/layout.c
     ${CMAKE_SOURCE_DIR}/tests/mocks/display_mock.c
 )

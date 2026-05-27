@@ -1,3 +1,4 @@
+#include "app/buffer/buffer.h"
 #include "app/layout/layout.h"
 #include "app/render/font.h"
 
@@ -13,7 +14,12 @@ static const font_t font = {.glyphs = glyphs, .glyph_count = 1, .line_height = 2
 #define MX 0
 #define MY 0
 
+// the patch produced by the most recent check_patch, for tests that assert on
+// which rows were reported as changed.
+static layout_patch_t last_patch;
+
 void setUp(void) {
+    last_patch = (layout_patch_t){0};
 }
 void tearDown(void) {
 }
@@ -36,20 +42,28 @@ static void assert_layouts_equal(const layout_t *expected, const layout_t *actua
     }
 }
 
-// The core differential property: patching the pre-edit layout must yield a
-// result byte-identical to computing the post-edit text from scratch.
+// patching the pre-edit layout must match a fresh compute of the post-edit text.
+// the buffer holds `after` with the gap at the cursor, so the edited line
+// straddles the gap as it would in the editor.
 static void check_patch(const char *before, edit_t edit, const char *after) {
     layout_t patched;
     layout_t expected;
 
+    buffer_t *buf = buffer_create(64);
+    buffer_insert_bytes(buf, after, strlen(after));
+    size_t cursor = (edit.type == EDIT_INSERT) ? edit.pos + edit.len : edit.pos;
+    buffer_set_cursor(buf, cursor);
+
+    char scratch[64];
     TEST_ASSERT_TRUE(layout_compute(&patched, before, strlen(before), &font, WRAP, MX, MY));
-    TEST_ASSERT_TRUE(layout_apply_edit(&patched, edit, after, strlen(after)));
+    TEST_ASSERT_TRUE(layout_apply_edit(&patched, edit, buf, scratch, sizeof(scratch), &last_patch));
     TEST_ASSERT_TRUE(layout_compute(&expected, after, strlen(after), &font, WRAP, MX, MY));
 
     assert_layouts_equal(&expected, &patched);
 
     layout_destroy(&patched);
     layout_destroy(&expected);
+    buffer_destroy(buf);
 }
 
 static void test_insert_char_midline(void) {
@@ -126,8 +140,50 @@ static void test_delete_merge_with_soft_wrapped_next(void) {
     check_patch("A\nBCDEFG", (edit_t){.type = EDIT_DELETE, .pos = 1, .len = 1}, "ABCDEFG");
 }
 
+// patch reporting: which rows a caller must repaint.
+
+static void test_patch_inline_insert_reports_single_row(void) {
+    check_patch("AB", (edit_t){.type = EDIT_INSERT, .pos = 1, .len = 1}, "AXB");
+    TEST_ASSERT_FALSE(last_patch.recomputed);
+    TEST_ASSERT_FALSE(last_patch.to_end);
+    TEST_ASSERT_EQUAL_size_t(0, last_patch.first_line);
+    TEST_ASSERT_EQUAL_size_t(0, last_patch.last_line);
+}
+
+static void test_patch_inline_insert_second_line_reports_that_row(void) {
+    check_patch("A\nBC", (edit_t){.type = EDIT_INSERT, .pos = 3, .len = 1}, "A\nBXC");
+    TEST_ASSERT_FALSE(last_patch.recomputed);
+    TEST_ASSERT_FALSE(last_patch.to_end);
+    TEST_ASSERT_EQUAL_size_t(1, last_patch.first_line);
+    TEST_ASSERT_EQUAL_size_t(1, last_patch.last_line);
+}
+
+static void test_patch_newline_split_reports_to_end(void) {
+    check_patch("AB\nCD", (edit_t){.type = EDIT_INSERT, .pos = 1, .len = 1}, "A\nB\nCD");
+    TEST_ASSERT_FALSE(last_patch.recomputed);
+    TEST_ASSERT_TRUE(last_patch.to_end);
+    TEST_ASSERT_EQUAL_size_t(0, last_patch.first_line);
+}
+
+static void test_patch_merge_reports_to_end(void) {
+    check_patch("A\nB\nCD", (edit_t){.type = EDIT_DELETE, .pos = 1, .len = 1}, "AB\nCD");
+    TEST_ASSERT_FALSE(last_patch.recomputed);
+    TEST_ASSERT_TRUE(last_patch.to_end);
+    TEST_ASSERT_EQUAL_size_t(0, last_patch.first_line);
+}
+
+static void test_patch_wrap_fallback_reports_recomputed(void) {
+    check_patch("ABCD", (edit_t){.type = EDIT_INSERT, .pos = 4, .len = 3}, "ABCDEFG");
+    TEST_ASSERT_TRUE(last_patch.recomputed);
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_patch_inline_insert_reports_single_row);
+    RUN_TEST(test_patch_inline_insert_second_line_reports_that_row);
+    RUN_TEST(test_patch_newline_split_reports_to_end);
+    RUN_TEST(test_patch_merge_reports_to_end);
+    RUN_TEST(test_patch_wrap_fallback_reports_recomputed);
     RUN_TEST(test_insert_char_midline);
     RUN_TEST(test_insert_char_at_end);
     RUN_TEST(test_insert_into_empty);

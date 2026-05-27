@@ -33,7 +33,8 @@ void render_put_pixel(hal_framebuffer_t *fb, int x, int y, uint8_t value) {
 }
 
 int render_draw_glyph(hal_framebuffer_t *fb, const font_t *font, const font_glyph_t *glyph, int x,
-                      int baseline_y) {
+                      int baseline_y, rect_t clip) {
+    bool clipped = !rect_is_empty(clip);
     int row_stride = (glyph->width + 7) / 8;
     for (int row = 0; row < glyph->height; row++) {
         for (int col = 0; col < glyph->width; col++) {
@@ -41,17 +42,21 @@ int render_draw_glyph(hal_framebuffer_t *fb, const font_t *font, const font_glyp
             uint8_t byte = font->bitmap_data[byte_index];
             int bit_index = 7 - (col % 8);
             int bit = (byte >> bit_index) & 1;
-            if (bit == 1) {
-                render_put_pixel(fb, x + glyph->x_offset + col, baseline_y + glyph->y_offset + row,
-                                 0);
-            }
+            if (bit != 1)
+                continue;
+            int px = x + glyph->x_offset + col;
+            int py = baseline_y + glyph->y_offset + row;
+            if (clipped &&
+                (px < clip.x || px >= clip.x + clip.w || py < clip.y || py >= clip.y + clip.h))
+                continue;
+            render_put_pixel(fb, px, py, 0);
         }
     }
     return glyph->x_advance;
 }
 
 int render_draw_string(hal_framebuffer_t *fb, const font_t *font, int x, int baseline_y,
-                       const char *utf8_text, size_t len) {
+                       const char *utf8_text, size_t len, rect_t clip) {
     int start_x = x;
     int cursor_x = x;
     int cursor_y = baseline_y;
@@ -73,13 +78,13 @@ int render_draw_string(hal_framebuffer_t *fb, const font_t *font, int x, int bas
         if (glyph == NULL) {
             continue;
         }
-        cursor_x += render_draw_glyph(fb, font, glyph, cursor_x, cursor_y);
+        cursor_x += render_draw_glyph(fb, font, glyph, cursor_x, cursor_y, clip);
     }
     return cursor_x;
 }
 
 void render_fill_rect(hal_framebuffer_t *fb, int x, int y, int w, int h, uint8_t value) {
-    // Clip to framebuffer bounds
+    // clip to framebuffer bounds
     if (x < 0) {
         w += x;
         x = 0;
@@ -100,4 +105,3 @@ void render_fill_rect(hal_framebuffer_t *fb, int x, int y, int w, int h, uint8_t
         memset(row_ptr, value, (size_t)w);
     }
 }
-

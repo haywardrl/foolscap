@@ -145,6 +145,38 @@ size_t buffer_copy_contiguous(const buffer_t *buffer, char *dst, size_t dst_capa
     return needed;
 }
 
+buffer_spans_t buffer_spans(const buffer_t *buffer) {
+    return (buffer_spans_t){
+        .first = buffer->data,
+        .first_len = buffer->gap_start,
+        .second = buffer->data + buffer->gap_end,
+        .second_len = buffer->capacity - buffer->gap_end,
+    };
+}
+
+buffer_region_t buffer_region(const buffer_t *buffer, size_t start, size_t end, char *scratch,
+                              size_t scratch_cap) {
+    size_t first_len = buffer->gap_start;
+    if (end <= first_len) {
+        // wholly before the gap
+        return (buffer_region_t){.ptr = buffer->data + start, .len = end - start};
+    }
+    if (start >= first_len) {
+        // wholly after the gap
+        return (buffer_region_t){.ptr = buffer->data + buffer->gap_end + (start - first_len),
+                                 .len = end - start};
+    }
+    // straddles the gap
+    size_t len = end - start;
+    if (scratch_cap < len) {
+        return (buffer_region_t){.ptr = NULL, .len = 0};
+    }
+    size_t before = first_len - start;
+    memcpy(scratch, buffer->data + start, before);
+    memcpy(scratch + before, buffer->data + buffer->gap_end, end - first_len);
+    return (buffer_region_t){.ptr = scratch, .len = len};
+}
+
 size_t buffer_cursor_pos(const buffer_t *buffer) {
     return buffer->gap_start;
 }

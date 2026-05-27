@@ -84,43 +84,43 @@ static void assert_fb_unchanged(void) {
 }
 
 static void test_single_char_advances_cursor(void) {
-    int advance = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "A", 1);
+    int advance = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "A", 1, (rect_t){0});
     TEST_ASSERT_EQUAL(START_X + cursor_glyphs[0].x_advance, advance);
     assert_fb_unchanged();
 }
 
 static void test_multi_char_cumulative_advance(void) {
-    int advance = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "AB", 2);
+    int advance = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "AB", 2, (rect_t){0});
     TEST_ASSERT_EQUAL(START_X + cursor_glyphs[0].x_advance + cursor_glyphs[1].x_advance, advance);
     assert_fb_unchanged();
 }
 
 static void test_empty_string_returns_start_x(void) {
-    int advance = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "", 0);
+    int advance = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "", 0, (rect_t){0});
     TEST_ASSERT_EQUAL(START_X, advance);
     assert_fb_unchanged();
 }
 
 static void test_newline_resets_x(void) {
-    int advance_x = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "A\n", 2);
+    int advance_x = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "A\n", 2, (rect_t){0});
     TEST_ASSERT_EQUAL(START_X, advance_x);
     assert_fb_unchanged();
 }
 
 static void test_newline_only_returns_start_x(void) {
-    int advance_x = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "\n", 1);
+    int advance_x = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "\n", 1, (rect_t){0});
     TEST_ASSERT_EQUAL(START_X, advance_x);
     assert_fb_unchanged();
 }
 
 static void test_newline_plus_char_advances_x(void) {
-    int advance_x = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "A\nB", 3);
+    int advance_x = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "A\nB", 3, (rect_t){0});
     TEST_ASSERT_EQUAL(START_X + cursor_glyphs[1].x_advance, advance_x);
     assert_fb_unchanged();
 }
 
 static void test_missing_codepoint_does_not_advance(void) {
-    int advance_x = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "AZA", 3);
+    int advance_x = render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, "AZA", 3, (rect_t){0});
     TEST_ASSERT_EQUAL(START_X + 2 * cursor_glyphs[0].x_advance, advance_x);
     assert_fb_unchanged();
 }
@@ -130,13 +130,13 @@ static void test_invalid_utf8_does_not_advance(void) {
     // draw_string should `continue` past it. Then 'A' renders normally.
     const char input[] = {(char)0xFF, 'A'};
     int advance_x =
-        render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, input, sizeof(input));
+        render_draw_string(&test_fb, &cursor_font, START_X, BASELINE_Y, input, sizeof(input), (rect_t){0});
     TEST_ASSERT_EQUAL(START_X + cursor_glyphs[0].x_advance, advance_x);
     assert_fb_unchanged();
 }
 
 static void test_bitmap_glyph_renders_pixels(void) {
-    int advance_x = render_draw_string(&test_fb, &bitmap_font, START_X, BASELINE_Y, "X", 1);
+    int advance_x = render_draw_string(&test_fb, &bitmap_font, START_X, BASELINE_Y, "X", 1, (rect_t){0});
     TEST_ASSERT_EQUAL(START_X + bitmap_glyphs[0].x_advance, advance_x);
     // Expect a 3x3 block of zero pixels at (START_X, BASELINE_Y).
     // (y_offset and x_offset are zero, so glyph origin == cursor position.)
@@ -151,8 +151,35 @@ static void test_bitmap_glyph_renders_pixels(void) {
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(128, fb_pixels[outside], "wrote outside glyph bounds");
 }
 
+static void test_clip_skips_pixels_outside(void) {
+    // 3x3 glyph at (START_X, BASELINE_Y); clip to its top-left 2x2 corner.
+    rect_t clip = {START_X, BASELINE_Y, 2, 2};
+    render_draw_string(&test_fb, &bitmap_font, START_X, BASELINE_Y, "X", 1, clip);
+    int set_count = 0;
+    for (size_t i = 0; i < sizeof(fb_pixels); i++) {
+        if (fb_pixels[i] == 0)
+            set_count++;
+    }
+    TEST_ASSERT_EQUAL_MESSAGE(4, set_count, "clip should keep only the 2x2 corner");
+    int outside = BASELINE_Y * FB_W + (START_X + 2);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(128, fb_pixels[outside], "pixel outside clip was drawn");
+}
+
+static void test_empty_clip_draws_everything(void) {
+    // an empty clip means no clipping: all 9 pixels draw.
+    render_draw_string(&test_fb, &bitmap_font, START_X, BASELINE_Y, "X", 1, (rect_t){0});
+    int set_count = 0;
+    for (size_t i = 0; i < sizeof(fb_pixels); i++) {
+        if (fb_pixels[i] == 0)
+            set_count++;
+    }
+    TEST_ASSERT_EQUAL(9, set_count);
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_clip_skips_pixels_outside);
+    RUN_TEST(test_empty_clip_draws_everything);
     RUN_TEST(test_single_char_advances_cursor);
     RUN_TEST(test_multi_char_cumulative_advance);
     RUN_TEST(test_empty_string_returns_start_x);

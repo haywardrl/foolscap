@@ -81,11 +81,12 @@ int main(int argc, char *argv[]) {
         }
 
         if (editor_is_dirty(ed)) {
-            editor_render(ed);
-            // TODO: replace with editor_dirty_rect(ed) once the editor
-            // tracks the changed region for partial e-ink refresh.
-            hal_framebuffer_t *fb = hal_display_get_framebuffer();
-            hal_display_flush_region(0, 0, fb->width, fb->height);
+            damage_t d = editor_render(ed);
+            if (d.kind == FLUSH_FULL) {
+                hal_display_full_flush();
+            } else {
+                hal_display_flush_region(d.rect.x, d.rect.y, d.rect.w, d.rect.h);
+            }
         }
     }
 

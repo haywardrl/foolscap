@@ -119,7 +119,7 @@ static const font_t font_11w = {
 };
 
 static void test_3x3_filled_draws_nine_pixels(void) {
-    int adv = render_draw_glyph(&fb, &font_3x3, &glyph_3x3_filled, 5, 5);
+    int adv = render_draw_glyph(&fb, &font_3x3, &glyph_3x3_filled, 5, 5, (rect_t){0});
     TEST_ASSERT_EQUAL(glyph_3x3_filled.x_advance, adv);
     for (int row = 0; row < 3; row++) {
         for (int col = 0; col < 3; col++) {
@@ -130,7 +130,7 @@ static void test_3x3_filled_draws_nine_pixels(void) {
 }
 
 static void test_1x1_draws_exactly_one_pixel(void) {
-    render_draw_glyph(&fb, &font_1x1, &glyph_1x1, 5, 5);
+    render_draw_glyph(&fb, &font_1x1, &glyph_1x1, 5, 5, (rect_t){0});
     int set_count = 0;
     for (size_t i = 0; i < sizeof(fb_pixels); i++) {
         if (fb_pixels[i] == 0)
@@ -141,7 +141,7 @@ static void test_1x1_draws_exactly_one_pixel(void) {
 }
 
 static void test_3x3_diagonal_set_bits_only(void) {
-    render_draw_glyph(&fb, &font_3x3_diag, &glyph_3x3_diag, 5, 5);
+    render_draw_glyph(&fb, &font_3x3_diag, &glyph_3x3_diag, 5, 5, (rect_t){0});
     int set_count = 0;
     for (size_t i = 0; i < sizeof(fb_pixels); i++) {
         if (fb_pixels[i] == 0)
@@ -154,7 +154,7 @@ static void test_3x3_diagonal_set_bits_only(void) {
 }
 
 static void test_x_and_y_offset_applied(void) {
-    render_draw_glyph(&fb, &font_offset, &glyph_offset, 5, 5);
+    render_draw_glyph(&fb, &font_offset, &glyph_offset, 5, 5, (rect_t){0});
     TEST_ASSERT_EQUAL_UINT8(0, fb_pixels[(5 + 3) * FB_W + (5 + 2)]);
     int set_count = 0;
     for (size_t i = 0; i < sizeof(fb_pixels); i++) {
@@ -165,7 +165,7 @@ static void test_x_and_y_offset_applied(void) {
 }
 
 static void test_edge_clipping_no_crash(void) {
-    int adv = render_draw_glyph(&fb, &font_3x3, &glyph_3x3_filled, FB_W - 2, 5);
+    int adv = render_draw_glyph(&fb, &font_3x3, &glyph_3x3_filled, FB_W - 2, 5, (rect_t){0});
     TEST_ASSERT_EQUAL(glyph_3x3_filled.x_advance, adv);
     int set_count = 0;
     for (size_t i = 0; i < sizeof(fb_pixels); i++) {
@@ -176,12 +176,12 @@ static void test_edge_clipping_no_crash(void) {
 }
 
 static void test_returns_x_advance(void) {
-    int adv = render_draw_glyph(&fb, &font_3x3, &glyph_3x3_filled, 5, 5);
+    int adv = render_draw_glyph(&fb, &font_3x3, &glyph_3x3_filled, 5, 5, (rect_t){0});
     TEST_ASSERT_EQUAL(glyph_3x3_filled.x_advance, adv);
 }
 
 static void test_11_wide_glyph_no_padding_leak(void) {
-    render_draw_glyph(&fb, &font_11w, &glyph_11w, 0, 5);
+    render_draw_glyph(&fb, &font_11w, &glyph_11w, 0, 5, (rect_t){0});
     int set_count = 0;
     for (size_t i = 0; i < sizeof(fb_pixels); i++) {
         if (fb_pixels[i] == 0)

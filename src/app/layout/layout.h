@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/buffer/buffer.h"
 #include "app/render/font.h"
 
 #include <stdbool.h>
@@ -31,13 +32,26 @@ typedef struct {
     size_t len;
 } edit_t;
 
-// Safe to call on a zero-initialised or post-compute layout_t.
+// Safe to call on a zero-initialised or post-compute layout_t
 void layout_destroy(layout_t *layout);
 
-// On failure, out is left in a destroyed (zeroed) state.
+// On failure, out is left in a destroyed (zeroed) state
 bool layout_compute(layout_t *layout, const char *text, size_t len, const font_t *font,
                     int wrap_width, int margin_x, int margin_top);
 
 size_t layout_find_line_for_byte(const layout_t *l, size_t byte);
 
-bool layout_apply_edit(layout_t *layout, edit_t edit, const char *text, size_t len);
+// which lines a patch touched, so the caller can repaint just those rows
+typedef struct {
+    size_t first_line; // first line whose contents or position changed
+    size_t last_line;  // inclusive, ignored when to_end is set
+    bool to_end;       // change runs through the final line (rows below moved)
+    bool recomputed;   // full relayout fallback so treat the whole text as changed
+} layout_patch_t;
+
+// patch layout to reflect edit applied to buf (which holds the post-edit
+// text). per-line reads use scratch (one line's worth). Any edit that crosses a
+// wrap boundary falls back to a full recompute. out reports the touched rows.
+// returns false only on alloc failure
+bool layout_apply_edit(layout_t *layout, edit_t edit, const buffer_t *buf, char *scratch,
+                       size_t scratch_cap, layout_patch_t *out);

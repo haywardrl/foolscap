@@ -168,10 +168,57 @@ static void test_editor_render_clears_dirty_flag(void) {
     editor_destroy(ed);
 }
 
+static void test_editor_initial_render_is_full(void) {
+    editor_t *ed = editor_create(&font, 256);
+    TEST_ASSERT_TRUE(editor_is_dirty(ed)); // first frame paints everything
+    damage_t d = editor_render(ed);
+    TEST_ASSERT_EQUAL(FLUSH_FULL, d.kind);
+    TEST_ASSERT_FALSE(rect_is_empty(d.rect));
+    TEST_ASSERT_FALSE(editor_is_dirty(ed));
+    editor_destroy(ed);
+}
+
+static void test_editor_inline_edit_is_partial(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_render(ed); // clear the initial full damage
+    TEST_ASSERT_TRUE(editor_insert_utf8(ed, "A", 1));
+    TEST_ASSERT_TRUE(editor_is_dirty(ed));
+    damage_t d = editor_render(ed);
+    TEST_ASSERT_EQUAL(FLUSH_PARTIAL, d.kind);
+    TEST_ASSERT_FALSE(rect_is_empty(d.rect));
+    editor_destroy(ed);
+}
+
+static void test_editor_cursor_move_damages_partial(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "AB", 2);
+    editor_render(ed); // clear; records the cursor cell
+    TEST_ASSERT_TRUE(editor_move_cursor(ed, EDITOR_CURSOR_LEFT));
+    TEST_ASSERT_TRUE(editor_is_dirty(ed)); // old cursor cell must be repainted
+    damage_t d = editor_render(ed);
+    TEST_ASSERT_EQUAL(FLUSH_PARTIAL, d.kind);
+    TEST_ASSERT_FALSE(rect_is_empty(d.rect));
+    editor_destroy(ed);
+}
+
+static void test_editor_wrapping_edit_forces_full(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_render(ed); // clear
+    // 10 glyphs at advance 10 overrun the wrap width, so layout recomputes
+    TEST_ASSERT_TRUE(editor_insert_utf8(ed, "AAAAAAAAAA", 10));
+    damage_t d = editor_render(ed);
+    TEST_ASSERT_EQUAL(FLUSH_FULL, d.kind);
+    editor_destroy(ed);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_editor_create_returns_non_null_for_valid_args);
     RUN_TEST(test_editor_render_clears_dirty_flag);
+    RUN_TEST(test_editor_initial_render_is_full);
+    RUN_TEST(test_editor_inline_edit_is_partial);
+    RUN_TEST(test_editor_cursor_move_damages_partial);
+    RUN_TEST(test_editor_wrapping_edit_forces_full);
     RUN_TEST(test_editor_create_returns_null_for_null_font);
     RUN_TEST(test_editor_create_returns_null_for_zero_capacity);
     RUN_TEST(test_editor_create_returns_null_for_font_with_no_glyphs);
