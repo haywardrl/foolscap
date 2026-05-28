@@ -16,7 +16,7 @@ add_executable(foolscap-sdl
     src/ports/sdl/mem_sdl.c
     src/app/buffer/buffer.c
     src/app/util/utf8.c
-    src/app/render/fonts/ibm_plex_mono_20.c
+    src/app/render/fonts/ibm_plex_mono_32.c
     src/app/render/render.c
     src/app/render/rect.c
     src/app/editor/editor.c
