@@ -1,0 +1,8 @@
+CompileFlags:
+  CompilationDatabase: build
+
+---
+If:
+  PathMatch: [src/ports/esp32s3/.*, firmware_esp32s3/.*]
+CompileFlags:
+  CompilationDatabase: firmware_esp32s3/build

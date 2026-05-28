@@ -1,0 +1,45 @@
+CONFIG_IDF_TARGET="esp32s3"
+
+# E-paper: vendored LilyGo-EPD47 (components/lilygo_epd47). Panel (ED047TC1) and
+# all GPIO/board wiring are hardcoded in the driver for the non-pro T5 4.7" S3 —
+# no Kconfig board/display selection needed.
+
+# PSRAM — T5 4.7" V2.3 uses Octal PSRAM. Switch to *_QUAD for older revs.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n
+
+# Flash
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# Use main task as app_main host; bump stack so render code has room.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# A full e-ink flush is a multi-second synchronous op: the clear/draw loops are
+# tight CPU0 busy-spins (busy_delay) that don't yield, starving IDLE0 and
+# tripping the default 5s task WDT. Raise the timeout to cover the long flush.
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=12
+
+# Bluetooth LE — Bluedroid host running the BLE HID host (esp_ble_hidh). This is
+# the mature stack the working esp_hid_host examples used; the NimBLE HID host in
+# this IDF is incomplete/buggy. Bluedroid's SMP does the passkey pairing.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_BLUEDROID_ENABLED=y
+CONFIG_BT_BLE_ENABLED=y
+CONFIG_BT_BLE_SMP_ENABLE=y
+CONFIG_BT_GATTC_ENABLE=y
+CONFIG_BT_BLE_42_FEATURES_SUPPORTED=y
+# The HHKB exposes 8 notify-able reports (battery, boot+report keyboard, 4
+# consumer-control); the default of 5 runs out before the keyboard input report
+# is subscribed, so letters never notify. Raise it.
+CONFIG_BT_GATTC_NOTIF_REG_MAX=16
+
+# Logging — keep runtime default at INFO but compile DEBUG in so we can raise
+# specific tags (e.g. NIMBLE_HIDH) via esp_log_level_set at runtime.
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y

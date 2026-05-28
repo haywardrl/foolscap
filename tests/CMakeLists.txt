@@ -17,6 +17,7 @@ function(add_unit_test name)
 endfunction()
 
 add_unit_test(rect ${CMAKE_SOURCE_DIR}/src/app/render/rect.c)
+add_unit_test(hid_keymap ${CMAKE_SOURCE_DIR}/src/ports/esp32s3/hid_keymap.c)
 add_unit_test(buffer ${CMAKE_SOURCE_DIR}/src/app/buffer/buffer.c)
 add_unit_test(utf8 ${CMAKE_SOURCE_DIR}/src/app/util/utf8.c)
 add_unit_test(render

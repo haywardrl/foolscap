@@ -1,0 +1,110 @@
+#include "ports/esp32s3/hid_keymap.h"
+
+#include <unity.h>
+
+void setUp(void) {
+}
+void tearDown(void) {
+}
+
+static void test_lowercase_letter(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x04, false, &e)); // 'a'
+    TEST_ASSERT_EQUAL(KEY_INSERT, e.kind);
+    TEST_ASSERT_EQUAL_UINT8(1, e.len);
+    TEST_ASSERT_EQUAL('a', e.bytes[0]);
+}
+
+static void test_shift_uppercases(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x02, 0x04, false, &e)); // left-shift + 'a'
+    TEST_ASSERT_EQUAL('A', e.bytes[0]);
+    TEST_ASSERT_TRUE(hid_decode(0x20, 0x04, false, &e)); // right-shift + 'a'
+    TEST_ASSERT_EQUAL('A', e.bytes[0]);
+}
+
+static void test_shifted_digit_is_symbol(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x1E, false, &e)); // '1'
+    TEST_ASSERT_EQUAL('1', e.bytes[0]);
+    TEST_ASSERT_TRUE(hid_decode(0x02, 0x1E, false, &e)); // shift+1 -> '!'
+    TEST_ASSERT_EQUAL('!', e.bytes[0]);
+}
+
+static void test_zero_and_its_symbol(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x27, false, &e));
+    TEST_ASSERT_EQUAL('0', e.bytes[0]);
+    TEST_ASSERT_TRUE(hid_decode(0x02, 0x27, false, &e));
+    TEST_ASSERT_EQUAL(')', e.bytes[0]);
+}
+
+static void test_enter_inserts_newline(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x28, false, &e));
+    TEST_ASSERT_EQUAL(KEY_INSERT, e.kind);
+    TEST_ASSERT_EQUAL(1, e.len);
+    TEST_ASSERT_EQUAL('\n', e.bytes[0]);
+}
+
+static void test_editing_and_navigation_keys(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x2A, false, &e));
+    TEST_ASSERT_EQUAL(KEY_BACKSPACE, e.kind);
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x4C, false, &e));
+    TEST_ASSERT_EQUAL(KEY_DELETE, e.kind);
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x4F, false, &e));
+    TEST_ASSERT_EQUAL(KEY_RIGHT, e.kind);
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x50, false, &e));
+    TEST_ASSERT_EQUAL(KEY_LEFT, e.kind);
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x51, false, &e));
+    TEST_ASSERT_EQUAL(KEY_DOWN, e.kind);
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x52, false, &e));
+    TEST_ASSERT_EQUAL(KEY_UP, e.kind);
+}
+
+static void test_unhandled_keys_rejected(void) {
+    key_event_t e;
+    TEST_ASSERT_FALSE(hid_decode(0x00, 0x00, false, &e)); // no key
+    TEST_ASSERT_FALSE(hid_decode(0x00, 0x29, false, &e)); // Esc, not mapped
+    TEST_ASSERT_FALSE(hid_decode(0x00, 0xFF, false, &e)); // out of range
+}
+
+static void test_caps_lock_uppercases_letters(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x04, true, &e)); // caps + 'a' -> 'A'
+    TEST_ASSERT_EQUAL('A', e.bytes[0]);
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x1D, true, &e)); // caps + 'z' -> 'Z'
+    TEST_ASSERT_EQUAL('Z', e.bytes[0]);
+}
+
+static void test_caps_lock_xors_with_shift(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x02, 0x04, true, &e)); // caps + shift + 'a' -> 'a'
+    TEST_ASSERT_EQUAL('a', e.bytes[0]);
+}
+
+static void test_caps_lock_leaves_digits_and_punct_alone(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x1E, true, &e)); // caps + '1' -> '1'
+    TEST_ASSERT_EQUAL('1', e.bytes[0]);
+    TEST_ASSERT_TRUE(hid_decode(0x02, 0x1E, true, &e)); // caps + shift + '1' -> '!'
+    TEST_ASSERT_EQUAL('!', e.bytes[0]);
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x36, true, &e)); // caps + ',' -> ','
+    TEST_ASSERT_EQUAL(',', e.bytes[0]);
+}
+
+int main(void) {
+    UNITY_BEGIN();
+    RUN_TEST(test_lowercase_letter);
+    RUN_TEST(test_shift_uppercases);
+    RUN_TEST(test_shifted_digit_is_symbol);
+    RUN_TEST(test_zero_and_its_symbol);
+    RUN_TEST(test_enter_inserts_newline);
+    RUN_TEST(test_editing_and_navigation_keys);
+    RUN_TEST(test_unhandled_keys_rejected);
+    RUN_TEST(test_caps_lock_uppercases_letters);
+    RUN_TEST(test_caps_lock_xors_with_shift);
+    RUN_TEST(test_caps_lock_leaves_digits_and_punct_alone);
+    return UNITY_END();
+}
