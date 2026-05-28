@@ -1,5 +1,5 @@
 #include "app/editor/editor.h"
-#include "app/render/fonts/ibm_plex_mono_20.h"
+#include "app/render/fonts/ibm_plex_mono_32.h"
 #include "hal/hal_display.h"
 
 #include <SDL2/SDL.h>
@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
         return 1;
     SDL_StartTextInput();
 
-    ed = editor_create(&IBM_PLEX_MONO_20, DOCUMENT_CAPACITY);
+    ed = editor_create(&IBM_PLEX_MONO_32, DOCUMENT_CAPACITY);
     if (ed == NULL)
         goto cleanup;
 
