@@ -42,7 +42,14 @@ static void editor_mark_full(editor_t *ed) {
 
 // turn the rows a layout patch touched into damaged pixels
 static void editor_damage_from_patch(editor_t *ed, layout_patch_t patch) {
-    if (patch.recomputed || patch.first_line >= ed->layout.count) {
+    if (patch.recomputed) {
+        // recompute lost per-line damage info, so repaint the whole screen as
+        // a partial (1-bit) flush. periodic full refresh handles ghosting.
+        const hal_framebuffer_t *fb = hal_display_get_framebuffer();
+        ed->damage.rect = rect_union(ed->damage.rect, (rect_t){0, 0, fb->width, fb->height});
+        return;
+    }
+    if (patch.first_line >= ed->layout.count) {
         editor_mark_full(ed);
         return;
     }
@@ -230,9 +237,23 @@ bool editor_move_cursor(editor_t *ed, editor_cursor_direction_t direction) {
 
 damage_t editor_render(editor_t *ed) {
     hal_framebuffer_t *fb = hal_display_get_framebuffer();
+
+    size_t cursor_byte = buffer_cursor_pos(ed->buf);
+    size_t line_idx = layout_find_line_for_byte(&ed->layout, cursor_byte);
+    const layout_line_t *line = &ed->layout.lines[line_idx];
+    buffer_region_t cursor_region = buffer_region(ed->buf, line->byte_start, cursor_byte,
+                                                  ed->line_scratch, ed->line_scratch_capacity);
+    size_t cps_before_cursor = utf8_count_codepoints(cursor_region.ptr, cursor_region.len);
+    int cursor_x = MARGIN_X + (int)cps_before_cursor * ed->cursor_width;
+    int cursor_y = line->y;
+    rect_t cursor_rect = editor_cursor_rect(ed, cursor_x, cursor_y);
+
+    // the cursor underline sits below the text row, so it can fall outside an
+    // edited row's damage. fold old and new cursor cells in before erasing.
+    ed->damage.rect = rect_union(ed->damage.rect, ed->last_cursor_rect);
+    ed->damage.rect = rect_union(ed->damage.rect, cursor_rect);
     rect_t clip = ed->damage.rect;
 
-    // erase and redraw only the damaged region
     render_fill_rect(fb, clip.x, clip.y, clip.w, clip.h, BACKGROUND);
 
     // lines run top to bottom, so skip past those above the damage and stop
@@ -249,23 +270,10 @@ damage_t editor_render(editor_t *ed) {
         render_draw_string(fb, ed->font, MARGIN_X, l->y, r.ptr, r.len, clip);
     }
 
-    size_t cursor_byte = buffer_cursor_pos(ed->buf);
-    size_t line_idx = layout_find_line_for_byte(&ed->layout, cursor_byte);
-    const layout_line_t *line = &ed->layout.lines[line_idx];
-    buffer_region_t cursor_region = buffer_region(ed->buf, line->byte_start, cursor_byte,
-                                                  ed->line_scratch, ed->line_scratch_capacity);
-    size_t cps_before_cursor = utf8_count_codepoints(cursor_region.ptr, cursor_region.len);
-    int cursor_x = MARGIN_X + (int)cps_before_cursor * ed->cursor_width;
-    int cursor_y = line->y;
-
     render_fill_rect(fb, cursor_x, cursor_y + CURSOR_Y_OFFSET, ed->cursor_width, CURSOR_HEIGHT,
                      FOREGROUND);
 
-    // include the new cursor cell in the flush and remember it for the next move
-    rect_t cursor_rect = editor_cursor_rect(ed, cursor_x, cursor_y);
-    ed->damage.rect = rect_union(ed->damage.rect, cursor_rect);
     ed->last_cursor_rect = cursor_rect;
-
     damage_t out = ed->damage;
     ed->damage = (damage_t){0}; // kind resets to FLUSH_PARTIAL
     return out;

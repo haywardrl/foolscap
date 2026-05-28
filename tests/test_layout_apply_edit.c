@@ -177,6 +177,21 @@ static void test_patch_wrap_fallback_reports_recomputed(void) {
     TEST_ASSERT_TRUE(last_patch.recomputed);
 }
 
+// a multi-line insert (paste, storage load) must lay out like a fresh
+// compute. fast single-newline split can't handle it.
+static void test_insert_multiline_into_empty(void) {
+    check_patch("", (edit_t){.type = EDIT_INSERT, .pos = 0, .len = 5}, "A\nB\nC");
+}
+
+static void test_insert_multibyte_with_newline(void) {
+    check_patch("AB", (edit_t){.type = EDIT_INSERT, .pos = 2, .len = 3}, "AB\nXY");
+}
+
+static void test_patch_multiline_insert_reports_recomputed(void) {
+    check_patch("", (edit_t){.type = EDIT_INSERT, .pos = 0, .len = 5}, "A\nB\nC");
+    TEST_ASSERT_TRUE(last_patch.recomputed);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_patch_inline_insert_reports_single_row);
@@ -184,6 +199,9 @@ int main(void) {
     RUN_TEST(test_patch_newline_split_reports_to_end);
     RUN_TEST(test_patch_merge_reports_to_end);
     RUN_TEST(test_patch_wrap_fallback_reports_recomputed);
+    RUN_TEST(test_insert_multiline_into_empty);
+    RUN_TEST(test_insert_multibyte_with_newline);
+    RUN_TEST(test_patch_multiline_insert_reports_recomputed);
     RUN_TEST(test_insert_char_midline);
     RUN_TEST(test_insert_char_at_end);
     RUN_TEST(test_insert_into_empty);

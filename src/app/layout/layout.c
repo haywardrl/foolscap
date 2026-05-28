@@ -205,7 +205,19 @@ bool layout_apply_edit(layout_t *layout, edit_t edit, const buffer_t *buf, char 
         // a newline splits the line
         buffer_region_t ins =
             buffer_region(buf, edit.pos, edit.pos + edit.len, scratch, scratch_cap);
-        if (memchr(ins.ptr, '\n', ins.len) != NULL) {
+        // too big for the one-line scratch, so it spans lines -> recompute
+        if (ins.ptr == NULL) {
+            out->recomputed = true;
+            return layout_recompute(layout, buf);
+        }
+        bool has_newline = memchr(ins.ptr, '\n', ins.len) != NULL;
+        // fast split only handles a lone '\n'. multi-byte inserts with a
+        // newline (paste, storage load) need recompute
+        if (has_newline && edit.len != 1) {
+            out->recomputed = true;
+            return layout_recompute(layout, buf);
+        }
+        if (has_newline) {
             size_t orig_byte_end = line->byte_end;
             bool orig_ends_with_newline = line->ends_with_newline;
             int orig_y = line->y;

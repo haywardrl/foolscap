@@ -1,7 +1,9 @@
 #include "app/buffer/buffer.h"
 #include "app/editor/editor.h"
+#include "app/editor/editor_config.h"
 #include "app/editor/editor_test.h"
 #include "app/render/font.h"
+#include "hal/hal_display.h"
 #include "mocks/display_mock.h"
 #include "unity_internals.h"
 
@@ -17,6 +19,15 @@ static const font_t font = {
     .glyphs = glyphs,
     .glyph_count = 3,
     .line_height = 20,
+};
+
+// ascent > 0 puts the cursor underline below the text row, which the
+// ascent=0 font above cannot exercise.
+static const font_t font_ascent = {
+    .glyphs = glyphs,
+    .glyph_count = 3,
+    .line_height = 20,
+    .ascent = 16,
 };
 
 void setUp(void) {
@@ -201,13 +212,41 @@ static void test_editor_cursor_move_damages_partial(void) {
     editor_destroy(ed);
 }
 
-static void test_editor_wrapping_edit_forces_full(void) {
+static void test_editor_wrapping_edit_damages_whole_screen_partial(void) {
     editor_t *ed = editor_create(&font, 256);
     editor_render(ed); // clear
     // 10 glyphs at advance 10 overrun the wrap width, so layout recomputes
+    // and repaints the whole screen as a partial flush (not a full flush).
     TEST_ASSERT_TRUE(editor_insert_utf8(ed, "AAAAAAAAAA", 10));
     damage_t d = editor_render(ed);
-    TEST_ASSERT_EQUAL(FLUSH_FULL, d.kind);
+    hal_framebuffer_t *fb = hal_display_get_framebuffer();
+    TEST_ASSERT_EQUAL(FLUSH_PARTIAL, d.kind);
+    TEST_ASSERT_EQUAL_INT(0, d.rect.x);
+    TEST_ASSERT_EQUAL_INT(0, d.rect.y);
+    TEST_ASSERT_EQUAL_INT(fb->width, d.rect.w);
+    TEST_ASSERT_EQUAL_INT(fb->height, d.rect.h);
+    editor_destroy(ed);
+}
+
+// regression: typing must erase the previous underline. it sits below the
+// text row, so an edit's row damage alone does not cover it.
+static void test_typing_erases_old_underline(void) {
+    editor_t *ed = editor_create(&font_ascent, 256);
+    editor_render(ed); // initial frame: cursor at column 0
+
+    hal_framebuffer_t *fb = hal_display_get_framebuffer();
+    int y = MARGIN_TOP + CURSOR_Y_OFFSET;
+    int col0_x = MARGIN_X + 0 * 10; // advance 10
+    int col1_x = MARGIN_X + 1 * 10;
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(FOREGROUND, fb->pixels[y * fb->stride + col0_x],
+                                    "cursor not drawn at column 0");
+
+    editor_insert_utf8(ed, "A", 1); // cursor advances to column 1
+    editor_render(ed);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(BACKGROUND, fb->pixels[y * fb->stride + col0_x],
+                                    "old underline left behind after typing");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(FOREGROUND, fb->pixels[y * fb->stride + col1_x],
+                                    "cursor not redrawn at column 1");
     editor_destroy(ed);
 }
 
@@ -215,10 +254,11 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_editor_create_returns_non_null_for_valid_args);
     RUN_TEST(test_editor_render_clears_dirty_flag);
+    RUN_TEST(test_typing_erases_old_underline);
     RUN_TEST(test_editor_initial_render_is_full);
     RUN_TEST(test_editor_inline_edit_is_partial);
     RUN_TEST(test_editor_cursor_move_damages_partial);
-    RUN_TEST(test_editor_wrapping_edit_forces_full);
+    RUN_TEST(test_editor_wrapping_edit_damages_whole_screen_partial);
     RUN_TEST(test_editor_create_returns_null_for_null_font);
     RUN_TEST(test_editor_create_returns_null_for_zero_capacity);
     RUN_TEST(test_editor_create_returns_null_for_font_with_no_glyphs);
