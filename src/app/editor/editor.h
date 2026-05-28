@@ -27,6 +27,10 @@ typedef enum {
     EDITOR_CURSOR_RIGHT,
     EDITOR_CURSOR_UP,
     EDITOR_CURSOR_DOWN,
+    EDITOR_CURSOR_WORD_LEFT,
+    EDITOR_CURSOR_WORD_RIGHT,
+    EDITOR_CURSOR_LINE_START,
+    EDITOR_CURSOR_LINE_END,
 } editor_cursor_direction_t;
 
 // returns NULL on alloc failure, null font, or zero capacity

@@ -4,6 +4,7 @@
 #include "esp_timer.h"
 #include "hal/hal_display.h"
 #include "input_esp32s3.h"
+#include "key_event.h"
 #include "nvs_flash.h"
 
 #include <esp_log.h>
@@ -18,7 +19,7 @@
 // forward typing barely ghosts, so deferring the refresh keeps it out of
 // the active typing flow. a high backstop covers sustained typing with no
 // pause.
-#define IDLE_FULL_REFRESH_MS 800
+#define IDLE_FULL_REFRESH_MS 1500
 #define PARTIALS_BACKSTOP 200
 
 static const char *TAG = "foolscap";
@@ -45,6 +46,18 @@ static void apply_key(editor_t *ed, const key_event_t *k) {
         break;
     case KEY_DOWN:
         editor_move_cursor(ed, EDITOR_CURSOR_DOWN);
+        break;
+    case KEY_WORD_LEFT:
+        editor_move_cursor(ed, EDITOR_CURSOR_WORD_LEFT);
+        break;
+    case KEY_WORD_RIGHT:
+        editor_move_cursor(ed, EDITOR_CURSOR_WORD_RIGHT);
+        break;
+    case KEY_LINE_START:
+        editor_move_cursor(ed, EDITOR_CURSOR_LINE_START);
+        break;
+    case KEY_LINE_END:
+        editor_move_cursor(ed, EDITOR_CURSOR_LINE_END);
         break;
     }
 }

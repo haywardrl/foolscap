@@ -24,6 +24,9 @@ bool buffer_set_cursor(buffer_t *buffer, size_t pos);
 // gap-aware, clamps pos
 size_t buffer_prev_codepoint_boundary(const buffer_t *buffer, size_t pos);
 size_t buffer_next_codepoint_boundary(const buffer_t *buffer, size_t pos);
+// readline version, jumps to end or start of word, not like vim-w
+size_t buffer_next_word_boundary(const buffer_t *buffer, size_t pos);
+size_t buffer_prev_word_boundary(const buffer_t *buffer, size_t pos);
 
 // writes nothing and returns 0 if dst_capacity < buffer_size()
 size_t buffer_copy_contiguous(const buffer_t *buffer, char *dst, size_t dst_capacity);

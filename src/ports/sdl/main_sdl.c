@@ -38,6 +38,11 @@ int main(int argc, char *argv[]) {
                 break;
 
             case SDL_TEXTINPUT:
+                // suppress text inserts when Alt is held so emacs-style
+                // M-f / M-b don't also type 'f' / 'b'.
+                if (SDL_GetModState() & KMOD_ALT) {
+                    break;
+                }
                 // event.text.text is null-terminated UTF-8
                 editor_insert_utf8(ed, event.text.text, strlen(event.text.text));
                 break;
@@ -57,17 +62,55 @@ int main(int argc, char *argv[]) {
                 case SDLK_DELETE:
                     editor_delete_forward(ed);
                     break;
-                case SDLK_LEFT:
-                    editor_move_cursor(ed, EDITOR_CURSOR_LEFT);
+                case SDLK_LEFT: {
+                    bool word = (event.key.keysym.mod & (KMOD_CTRL | KMOD_ALT)) != 0;
+                    editor_move_cursor(ed, word ? EDITOR_CURSOR_WORD_LEFT : EDITOR_CURSOR_LEFT);
                     break;
-                case SDLK_RIGHT:
-                    editor_move_cursor(ed, EDITOR_CURSOR_RIGHT);
+                }
+                case SDLK_RIGHT: {
+                    bool word = (event.key.keysym.mod & (KMOD_CTRL | KMOD_ALT)) != 0;
+                    editor_move_cursor(ed, word ? EDITOR_CURSOR_WORD_RIGHT : EDITOR_CURSOR_RIGHT);
+                    break;
+                }
+                case SDLK_b:
+                    if (event.key.keysym.mod & KMOD_ALT) {
+                        editor_move_cursor(ed, EDITOR_CURSOR_WORD_LEFT);
+                    } else if (event.key.keysym.mod & KMOD_CTRL) {
+                        editor_move_cursor(ed, EDITOR_CURSOR_LEFT);
+                    }
+                    break;
+                case SDLK_f:
+                    if (event.key.keysym.mod & KMOD_ALT) {
+                        editor_move_cursor(ed, EDITOR_CURSOR_WORD_RIGHT);
+                    } else if (event.key.keysym.mod & KMOD_CTRL) {
+                        editor_move_cursor(ed, EDITOR_CURSOR_RIGHT);
+                    }
+                    break;
+                case SDLK_a:
+                    if (event.key.keysym.mod & KMOD_CTRL) {
+                        editor_move_cursor(ed, EDITOR_CURSOR_LINE_START);
+                    }
+                    break;
+                case SDLK_e:
+                    if (event.key.keysym.mod & KMOD_CTRL) {
+                        editor_move_cursor(ed, EDITOR_CURSOR_LINE_END);
+                    }
                     break;
                 case SDLK_UP:
                     editor_move_cursor(ed, EDITOR_CURSOR_UP);
                     break;
                 case SDLK_DOWN:
                     editor_move_cursor(ed, EDITOR_CURSOR_DOWN);
+                    break;
+                case SDLK_n:
+                    if (event.key.keysym.mod & KMOD_CTRL) {
+                        editor_move_cursor(ed, EDITOR_CURSOR_DOWN);
+                    }
+                    break;
+                case SDLK_p:
+                    if (event.key.keysym.mod & KMOD_CTRL) {
+                        editor_move_cursor(ed, EDITOR_CURSOR_UP);
+                    }
                     break;
                 }
                 break;

@@ -94,6 +94,36 @@ static void test_caps_lock_leaves_digits_and_punct_alone(void) {
     TEST_ASSERT_EQUAL(',', e.bytes[0]);
 }
 
+static void test_ctrl_arrow_is_word_motion(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x01, 0x4F, false, &e)); // L-Ctrl + Right
+    TEST_ASSERT_EQUAL(KEY_WORD_RIGHT, e.kind);
+    TEST_ASSERT_TRUE(hid_decode(0x10, 0x50, false, &e)); // R-Ctrl + Left
+    TEST_ASSERT_EQUAL(KEY_WORD_LEFT, e.kind);
+}
+
+static void test_alt_arrow_is_word_motion(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x04, 0x4F, false, &e)); // L-Alt + Right
+    TEST_ASSERT_EQUAL(KEY_WORD_RIGHT, e.kind);
+    TEST_ASSERT_TRUE(hid_decode(0x40, 0x50, false, &e)); // R-Alt + Left
+    TEST_ASSERT_EQUAL(KEY_WORD_LEFT, e.kind);
+}
+
+static void test_alt_f_and_alt_b_are_emacs_word_motion(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x04, 0x09, false, &e)); // Alt + f
+    TEST_ASSERT_EQUAL(KEY_WORD_RIGHT, e.kind);
+    TEST_ASSERT_TRUE(hid_decode(0x04, 0x05, false, &e)); // Alt + b
+    TEST_ASSERT_EQUAL(KEY_WORD_LEFT, e.kind);
+}
+
+static void test_alt_other_letter_is_swallowed(void) {
+    key_event_t e;
+    // Alt + 'a' must not insert 'a'
+    TEST_ASSERT_FALSE(hid_decode(0x04, 0x04, false, &e));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lowercase_letter);
@@ -106,5 +136,9 @@ int main(void) {
     RUN_TEST(test_caps_lock_uppercases_letters);
     RUN_TEST(test_caps_lock_xors_with_shift);
     RUN_TEST(test_caps_lock_leaves_digits_and_punct_alone);
+    RUN_TEST(test_ctrl_arrow_is_word_motion);
+    RUN_TEST(test_alt_arrow_is_word_motion);
+    RUN_TEST(test_alt_f_and_alt_b_are_emacs_word_motion);
+    RUN_TEST(test_alt_other_letter_is_swallowed);
     return UNITY_END();
 }

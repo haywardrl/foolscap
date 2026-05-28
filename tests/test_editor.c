@@ -169,6 +169,91 @@ static void test_editor_move_cursor_right_advances_by_codepoint_multibyte(void) 
     editor_destroy(ed);
 }
 
+static void test_editor_line_start_jumps_to_start_of_visual_line(void) {
+    // "AAAAAAAA" wraps after 6 As (wrap_width=80, advance=10): line0 [0,6), line1 [6,8)
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "AAAAAAAA", 8);
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    TEST_ASSERT_EQUAL_size_t(8, buffer_cursor_pos(buf));
+    TEST_ASSERT_TRUE(editor_move_cursor(ed, EDITOR_CURSOR_LINE_START));
+    TEST_ASSERT_EQUAL_size_t(6, buffer_cursor_pos(buf));
+    editor_destroy(ed);
+}
+
+static void test_editor_line_end_lands_before_newline(void) {
+    // "AA\nAA" — line0 ends with \n, byte_end=2 (the \n position itself)
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "AA\nAA", 5);
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    buffer_set_cursor((buffer_t *)buf, 0);
+    TEST_ASSERT_TRUE(editor_move_cursor(ed, EDITOR_CURSOR_LINE_END));
+    TEST_ASSERT_EQUAL_size_t(2, buffer_cursor_pos(buf));
+    editor_destroy(ed);
+}
+
+static void test_editor_line_end_backs_off_one_codepoint_on_soft_wrap(void) {
+    // "AAAAAAAA": from pos 0 on line0 (soft-wrapped), C-e backs off byte_end=6 → 5.
+    // pos 6 would visually render as col 0 of line1, which isn't end-of-this-line.
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "AAAAAAAA", 8);
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    buffer_set_cursor((buffer_t *)buf, 0);
+    TEST_ASSERT_TRUE(editor_move_cursor(ed, EDITOR_CURSOR_LINE_END));
+    TEST_ASSERT_EQUAL_size_t(5, buffer_cursor_pos(buf));
+    editor_destroy(ed);
+}
+
+static void test_editor_line_end_lands_at_buffer_end_on_final_line(void) {
+    // last layout line has ends_with_newline=false but is_last_line=true: no back-off.
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "AAA", 3);
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    buffer_set_cursor((buffer_t *)buf, 0);
+    TEST_ASSERT_TRUE(editor_move_cursor(ed, EDITOR_CURSOR_LINE_END));
+    TEST_ASSERT_EQUAL_size_t(3, buffer_cursor_pos(buf));
+    editor_destroy(ed);
+}
+
+static void test_editor_line_start_at_line_start_returns_false(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "AAA", 3);
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    buffer_set_cursor((buffer_t *)buf, 0);
+    TEST_ASSERT_FALSE(editor_move_cursor(ed, EDITOR_CURSOR_LINE_START));
+    editor_destroy(ed);
+}
+
+static void test_editor_line_end_at_line_end_returns_false(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "AAA", 3);
+    TEST_ASSERT_FALSE(editor_move_cursor(ed, EDITOR_CURSOR_LINE_END));
+    editor_destroy(ed);
+}
+
+static void test_editor_line_start_empty_buffer_returns_false(void) {
+    editor_t *ed = editor_create(&font, 256);
+    TEST_ASSERT_FALSE(editor_move_cursor(ed, EDITOR_CURSOR_LINE_START));
+    TEST_ASSERT_FALSE(editor_move_cursor(ed, EDITOR_CURSOR_LINE_END));
+    editor_destroy(ed);
+}
+
+static void test_editor_line_end_multibyte_codepoint(void) {
+    // Euro is 3 bytes. Layout treats the font as monospace and uses glyphs[0]
+    // advance (10) for every codepoint. So 6 euros fit per line (x=80); the 7th
+    // triggers wrap. Line 0 = [0, 18). Soft-wrap back-off must step back one
+    // codepoint = 3 bytes, not 1 byte, to land at 15.
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed,
+                       "\xE2\x82\xAC\xE2\x82\xAC\xE2\x82\xAC\xE2\x82\xAC"
+                       "\xE2\x82\xAC\xE2\x82\xAC\xE2\x82\xAC",
+                       21);
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    buffer_set_cursor((buffer_t *)buf, 0);
+    TEST_ASSERT_TRUE(editor_move_cursor(ed, EDITOR_CURSOR_LINE_END));
+    TEST_ASSERT_EQUAL_size_t(15, buffer_cursor_pos(buf)); // 18 - 3
+    editor_destroy(ed);
+}
+
 static void test_editor_render_clears_dirty_flag(void) {
     editor_t *ed = editor_create(&font, 256);
     TEST_ASSERT_NOT_NULL(ed);
@@ -275,5 +360,13 @@ int main(void) {
     RUN_TEST(test_editor_move_cursor_right_at_end_returns_false);
     RUN_TEST(test_editor_move_cursor_left_advances_by_codepoint_multibyte);
     RUN_TEST(test_editor_move_cursor_right_advances_by_codepoint_multibyte);
+    RUN_TEST(test_editor_line_start_jumps_to_start_of_visual_line);
+    RUN_TEST(test_editor_line_end_lands_before_newline);
+    RUN_TEST(test_editor_line_end_backs_off_one_codepoint_on_soft_wrap);
+    RUN_TEST(test_editor_line_end_lands_at_buffer_end_on_final_line);
+    RUN_TEST(test_editor_line_start_at_line_start_returns_false);
+    RUN_TEST(test_editor_line_end_at_line_end_returns_false);
+    RUN_TEST(test_editor_line_start_empty_buffer_returns_false);
+    RUN_TEST(test_editor_line_end_multibyte_codepoint);
     return UNITY_END();
 }

@@ -2,7 +2,9 @@
 
 #include "hal/hal_mem.h"
 
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -93,6 +95,26 @@ static bool is_continuation_byte(unsigned char b) {
     return (b & 0xC0) == 0x80;
 }
 
+static inline bool is_ascii_ws(uint8_t b) {
+    return b == ' ' || b == '\t' || b == '\n' || b == '\r';
+}
+
+size_t buffer_next_codepoint_boundary(const buffer_t *buffer, size_t pos) {
+    size_t size = buffer_size(buffer);
+    if (pos >= size) {
+        return size;
+    }
+    size_t i = pos + 1;
+    for (int steps = 0; steps < 4 && i < size; steps++) {
+        unsigned char b = (unsigned char)buffer_char_at(buffer, i);
+        if (!is_continuation_byte(b)) {
+            return i;
+        }
+        i += 1;
+    }
+    return i;
+}
+
 size_t buffer_prev_codepoint_boundary(const buffer_t *buffer, size_t pos) {
     size_t size = buffer_size(buffer);
     if (pos > size) {
@@ -113,20 +135,40 @@ size_t buffer_prev_codepoint_boundary(const buffer_t *buffer, size_t pos) {
     return pos - 1;
 }
 
-size_t buffer_next_codepoint_boundary(const buffer_t *buffer, size_t pos) {
+size_t buffer_next_word_boundary(const buffer_t *buffer, size_t pos) {
     size_t size = buffer_size(buffer);
-    if (pos >= size) {
-        return size;
+    if (pos > size) {
+        pos = size;
     }
-    size_t i = pos + 1;
-    for (int steps = 0; steps < 4 && i < size; steps++) {
-        unsigned char b = (unsigned char)buffer_char_at(buffer, i);
-        if (!is_continuation_byte(b)) {
-            return i;
+    while (pos < size && is_ascii_ws((unsigned char)buffer_char_at(buffer, pos))) {
+        pos = buffer_next_codepoint_boundary(buffer, pos);
+    }
+    while (pos < size && !is_ascii_ws((unsigned char)buffer_char_at(buffer, pos))) {
+        pos = buffer_next_codepoint_boundary(buffer, pos);
+    }
+    return pos;
+}
+
+size_t buffer_prev_word_boundary(const buffer_t *buffer, size_t pos) {
+    size_t size = buffer_size(buffer);
+    if (pos > size) {
+        pos = size;
+    }
+    while (pos > 0) {
+        size_t prev = buffer_prev_codepoint_boundary(buffer, pos);
+        if (!is_ascii_ws((unsigned char)buffer_char_at(buffer, prev))) {
+            break;
         }
-        i += 1;
+        pos = prev;
     }
-    return i;
+    while (pos > 0) {
+        size_t prev = buffer_prev_codepoint_boundary(buffer, pos);
+        if (is_ascii_ws((unsigned char)buffer_char_at(buffer, prev))) {
+            break;
+        }
+        pos = prev;
+    }
+    return pos;
 }
 
 size_t buffer_copy_contiguous(const buffer_t *buffer, char *dst, size_t dst_capacity) {

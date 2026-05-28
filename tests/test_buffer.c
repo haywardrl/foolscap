@@ -251,6 +251,165 @@ static void test_next_boundary_multibyte(void) {
     buffer_destroy(buffer);
 }
 
+static void test_next_word_empty_buffer(void) {
+    buffer_t *buffer = buffer_create(16);
+    TEST_ASSERT_EQUAL_size_t(0, buffer_next_word_boundary(buffer, 0));
+    buffer_destroy(buffer);
+}
+
+static void test_next_word_at_end(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo", 3);
+    TEST_ASSERT_EQUAL_size_t(3, buffer_next_word_boundary(buffer, 3));
+    buffer_destroy(buffer);
+}
+
+static void test_next_word_oversized_pos_clamps(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo", 3);
+    TEST_ASSERT_EQUAL_size_t(3, buffer_next_word_boundary(buffer, 99));
+    buffer_destroy(buffer);
+}
+
+static void test_next_word_from_start_lands_at_word_end(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo bar", 7);
+    TEST_ASSERT_EQUAL_size_t(3, buffer_next_word_boundary(buffer, 0));
+    buffer_destroy(buffer);
+}
+
+static void test_next_word_from_mid_word_lands_at_word_end(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo bar", 7);
+    TEST_ASSERT_EQUAL_size_t(3, buffer_next_word_boundary(buffer, 1));
+    buffer_destroy(buffer);
+}
+
+// readline phase order: on ws, skip ws then skip word
+static void test_next_word_from_whitespace_skips_to_next_word_end(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo bar", 7);
+    TEST_ASSERT_EQUAL_size_t(7, buffer_next_word_boundary(buffer, 3));
+    buffer_destroy(buffer);
+}
+
+static void test_next_word_trailing_whitespace_lands_at_end(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo   ", 6);
+    TEST_ASSERT_EQUAL_size_t(6, buffer_next_word_boundary(buffer, 3));
+    buffer_destroy(buffer);
+}
+
+static void test_next_word_leading_whitespace_crossed(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "   foo", 6);
+    TEST_ASSERT_EQUAL_size_t(6, buffer_next_word_boundary(buffer, 0));
+    buffer_destroy(buffer);
+}
+
+static void test_next_word_newline_is_whitespace(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo\nbar", 7);
+    TEST_ASSERT_EQUAL_size_t(3, buffer_next_word_boundary(buffer, 0));
+    TEST_ASSERT_EQUAL_size_t(7, buffer_next_word_boundary(buffer, 3));
+    buffer_destroy(buffer);
+}
+
+// café = c,a,f,é(2 bytes) = 5 bytes; must land at 5, never inside é
+static void test_next_word_multibyte_stays_on_codepoint_boundary(void) {
+    buffer_t *buffer = buffer_create(16);
+    const char input[] = {'c', 'a', 'f', (char)0xC3, (char)0xA9, ' ', 'x'};
+    buffer_insert_bytes(buffer, input, 7);
+    TEST_ASSERT_EQUAL_size_t(5, buffer_next_word_boundary(buffer, 0));
+    buffer_destroy(buffer);
+}
+
+static void test_next_word_across_gap(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo bar", 7);
+    buffer_set_cursor(buffer, 2);
+    TEST_ASSERT_EQUAL_size_t(3, buffer_next_word_boundary(buffer, 0));
+    TEST_ASSERT_EQUAL_size_t(7, buffer_next_word_boundary(buffer, 3));
+    buffer_destroy(buffer);
+}
+
+static void test_prev_word_empty_buffer(void) {
+    buffer_t *buffer = buffer_create(16);
+    TEST_ASSERT_EQUAL_size_t(0, buffer_prev_word_boundary(buffer, 0));
+    buffer_destroy(buffer);
+}
+
+static void test_prev_word_at_zero(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo", 3);
+    TEST_ASSERT_EQUAL_size_t(0, buffer_prev_word_boundary(buffer, 0));
+    buffer_destroy(buffer);
+}
+
+static void test_prev_word_from_end_lands_at_word_start(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo bar", 7);
+    TEST_ASSERT_EQUAL_size_t(4, buffer_prev_word_boundary(buffer, 7));
+    buffer_destroy(buffer);
+}
+
+static void test_prev_word_from_mid_word_lands_at_word_start(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo bar", 7);
+    TEST_ASSERT_EQUAL_size_t(4, buffer_prev_word_boundary(buffer, 6));
+    buffer_destroy(buffer);
+}
+
+// readline phase order: just past a word, skip ws back then skip word back
+static void test_prev_word_from_whitespace_skips_to_prev_word_start(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo bar", 7);
+    TEST_ASSERT_EQUAL_size_t(0, buffer_prev_word_boundary(buffer, 4));
+    buffer_destroy(buffer);
+}
+
+static void test_prev_word_leading_whitespace_lands_past_it(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "  foo", 5);
+    TEST_ASSERT_EQUAL_size_t(2, buffer_prev_word_boundary(buffer, 5));
+    buffer_destroy(buffer);
+}
+
+static void test_prev_word_trailing_whitespace_crossed(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo  ", 5);
+    TEST_ASSERT_EQUAL_size_t(0, buffer_prev_word_boundary(buffer, 5));
+    buffer_destroy(buffer);
+}
+
+static void test_prev_word_newline_is_whitespace(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo\nbar", 7);
+    TEST_ASSERT_EQUAL_size_t(4, buffer_prev_word_boundary(buffer, 7));
+    TEST_ASSERT_EQUAL_size_t(0, buffer_prev_word_boundary(buffer, 4));
+    buffer_destroy(buffer);
+}
+
+// café x: c=0 a=1 f=2 é=3..4 ' '=5 x=6, size=7
+// from 7 lands at 6 (start of 'x'); from 5 lands at 0 (skips past é, never inside it)
+static void test_prev_word_multibyte_stays_on_codepoint_boundary(void) {
+    buffer_t *buffer = buffer_create(16);
+    const char input[] = {'c', 'a', 'f', (char)0xC3, (char)0xA9, ' ', 'x'};
+    buffer_insert_bytes(buffer, input, 7);
+    TEST_ASSERT_EQUAL_size_t(6, buffer_prev_word_boundary(buffer, 7));
+    TEST_ASSERT_EQUAL_size_t(0, buffer_prev_word_boundary(buffer, 5));
+    buffer_destroy(buffer);
+}
+
+static void test_prev_word_across_gap(void) {
+    buffer_t *buffer = buffer_create(16);
+    buffer_insert_bytes(buffer, "foo bar", 7);
+    buffer_set_cursor(buffer, 5);
+    TEST_ASSERT_EQUAL_size_t(4, buffer_prev_word_boundary(buffer, 7));
+    TEST_ASSERT_EQUAL_size_t(0, buffer_prev_word_boundary(buffer, 4));
+    buffer_destroy(buffer);
+}
+
 static void test_copy_contiguous_empty(void) {
     buffer_t *buffer = buffer_create(16);
     char dst[16];
@@ -475,6 +634,29 @@ int main(void) {
     RUN_TEST(test_next_boundary_at_end);
     RUN_TEST(test_next_boundary_ascii);
     RUN_TEST(test_next_boundary_multibyte);
+
+    RUN_TEST(test_next_word_empty_buffer);
+    RUN_TEST(test_next_word_at_end);
+    RUN_TEST(test_next_word_oversized_pos_clamps);
+    RUN_TEST(test_next_word_from_start_lands_at_word_end);
+    RUN_TEST(test_next_word_from_mid_word_lands_at_word_end);
+    RUN_TEST(test_next_word_from_whitespace_skips_to_next_word_end);
+    RUN_TEST(test_next_word_trailing_whitespace_lands_at_end);
+    RUN_TEST(test_next_word_leading_whitespace_crossed);
+    RUN_TEST(test_next_word_newline_is_whitespace);
+    RUN_TEST(test_next_word_multibyte_stays_on_codepoint_boundary);
+    RUN_TEST(test_next_word_across_gap);
+
+    RUN_TEST(test_prev_word_empty_buffer);
+    RUN_TEST(test_prev_word_at_zero);
+    RUN_TEST(test_prev_word_from_end_lands_at_word_start);
+    RUN_TEST(test_prev_word_from_mid_word_lands_at_word_start);
+    RUN_TEST(test_prev_word_from_whitespace_skips_to_prev_word_start);
+    RUN_TEST(test_prev_word_leading_whitespace_lands_past_it);
+    RUN_TEST(test_prev_word_trailing_whitespace_crossed);
+    RUN_TEST(test_prev_word_newline_is_whitespace);
+    RUN_TEST(test_prev_word_multibyte_stays_on_codepoint_boundary);
+    RUN_TEST(test_prev_word_across_gap);
 
     RUN_TEST(test_copy_contiguous_empty);
     RUN_TEST(test_copy_contiguous_gap_at_end);

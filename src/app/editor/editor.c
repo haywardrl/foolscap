@@ -202,6 +202,47 @@ bool editor_move_cursor(editor_t *ed, editor_cursor_direction_t direction) {
         return true;
     }
 
+    if (direction == EDITOR_CURSOR_WORD_LEFT || direction == EDITOR_CURSOR_WORD_RIGHT) {
+        size_t target;
+        if (direction == EDITOR_CURSOR_WORD_LEFT) {
+            if (cursor_pos == 0)
+                return false;
+            target = buffer_prev_word_boundary(ed->buf, cursor_pos);
+        } else {
+            if (cursor_pos == buffer_len)
+                return false;
+            target = buffer_next_word_boundary(ed->buf, cursor_pos);
+        }
+        buffer_set_cursor(ed->buf, target);
+        ed->preferred_col = SIZE_MAX;
+        ed->damage.rect = rect_union(ed->damage.rect, ed->last_cursor_rect);
+        return true;
+    }
+
+    if (direction == EDITOR_CURSOR_LINE_START || direction == EDITOR_CURSOR_LINE_END) {
+        size_t line_idx = layout_find_line_for_byte(&ed->layout, cursor_pos);
+        const layout_line_t *line = &ed->layout.lines[line_idx];
+        size_t target;
+        if (direction == EDITOR_CURSOR_LINE_START) {
+            target = line->byte_start;
+        } else {
+            target = line->byte_end;
+            // soft-wrapped line: byte_end is the first byte of the next visual
+            // row, so back off one codepoint to land at this row's last glyph.
+            // skipped on the final layout line, where byte_end == buffer_size.
+            bool is_soft_wrapped = !line->ends_with_newline && line_idx + 1 < ed->layout.count;
+            if (is_soft_wrapped && target > line->byte_start) {
+                target = buffer_prev_codepoint_boundary(ed->buf, target);
+            }
+        }
+        if (target == cursor_pos)
+            return false;
+        buffer_set_cursor(ed->buf, target);
+        ed->preferred_col = SIZE_MAX;
+        ed->damage.rect = rect_union(ed->damage.rect, ed->last_cursor_rect);
+        return true;
+    }
+
     // up / down: the standing layout is already current
     size_t line_idx = layout_find_line_for_byte(&ed->layout, cursor_pos);
 
