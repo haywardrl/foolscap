@@ -59,6 +59,12 @@ static void apply_key(editor_t *ed, const key_event_t *k) {
     case KEY_LINE_END:
         editor_move_cursor(ed, EDITOR_CURSOR_LINE_END);
         break;
+    case KEY_UNDO:
+        editor_undo(ed);
+        break;
+    case KEY_REDO:
+        editor_redo(ed);
+        break;
     }
 }
 

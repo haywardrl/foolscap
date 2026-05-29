@@ -335,8 +335,219 @@ static void test_typing_erases_old_underline(void) {
     editor_destroy(ed);
 }
 
+static void test_editor_contiguous_inserts_coalesce(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "A", 1);
+    editor_insert_utf8(ed, "B", 1);
+    editor_insert_utf8(ed, "A", 1);
+    // contiguous typing folds into a single undo group
+    TEST_ASSERT_EQUAL_size_t(1, editor_test_undo_count(ed));
+    TEST_ASSERT_EQUAL_size_t(0, editor_test_redo_count(ed));
+    // one undo clears the whole run
+    TEST_ASSERT_TRUE(editor_undo(ed));
+    TEST_ASSERT_EQUAL_size_t(0, buffer_size(editor_test_get_buffer(ed)));
+    editor_destroy(ed);
+}
+
+static void test_editor_delete_records_on_undo_stack(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "A", 1); // 1 command
+    editor_backspace(ed);           // 2 commands (insert + delete)
+    TEST_ASSERT_EQUAL_size_t(2, editor_test_undo_count(ed));
+    editor_destroy(ed);
+}
+
+static void test_editor_failed_insert_does_not_record(void) {
+    editor_t *ed = editor_create(&font, 1);
+    TEST_ASSERT_FALSE(editor_insert_utf8(ed, "AB", 2)); // overflows capacity 1
+    TEST_ASSERT_EQUAL_size_t(0, editor_test_undo_count(ed));
+    editor_destroy(ed);
+}
+
+static void test_editor_at_edge_noop_does_not_record(void) {
+    editor_t *ed = editor_create(&font, 256);
+    TEST_ASSERT_FALSE(editor_backspace(ed));      // cursor at 0
+    TEST_ASSERT_FALSE(editor_delete_forward(ed)); // cursor at end
+    TEST_ASSERT_EQUAL_size_t(0, editor_test_undo_count(ed));
+    editor_destroy(ed);
+}
+
+// exercises ring wrap, eviction, and freeing the dropped payload (ASan watches
+// for leaks / use-after-free here).
+static void test_editor_undo_ring_caps_and_drops_oldest(void) {
+    editor_t *ed = editor_create(&font, 1024);
+    // newline inserts never coalesce, so each is its own undo group
+    for (int i = 0; i < 300; i++) { // > UNDO_CAP (256)
+        TEST_ASSERT_TRUE(editor_insert_utf8(ed, "\n", 1));
+    }
+    TEST_ASSERT_EQUAL_size_t(256, editor_test_undo_count(ed));
+    editor_destroy(ed);
+}
+
+static void test_editor_undo_empty_returns_false(void) {
+    editor_t *ed = editor_create(&font, 256);
+    TEST_ASSERT_FALSE(editor_undo(ed));
+    TEST_ASSERT_FALSE(editor_redo(ed));
+    editor_destroy(ed);
+}
+
+static void test_editor_undo_insert_reverts_buffer_and_cursor(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "AB", 2);
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    TEST_ASSERT_EQUAL_size_t(2, buffer_size(buf));
+
+    TEST_ASSERT_TRUE(editor_undo(ed));
+    TEST_ASSERT_EQUAL_size_t(0, buffer_size(buf));       // insert undone
+    TEST_ASSERT_EQUAL_size_t(0, buffer_cursor_pos(buf)); // cursor back to pos
+    TEST_ASSERT_EQUAL_size_t(0, editor_test_undo_count(ed));
+    TEST_ASSERT_EQUAL_size_t(1, editor_test_redo_count(ed));
+    editor_destroy(ed);
+}
+
+static void test_editor_redo_replays_insert(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "AB", 2);
+    editor_undo(ed);
+    TEST_ASSERT_TRUE(editor_redo(ed));
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    TEST_ASSERT_EQUAL_size_t(2, buffer_size(buf));
+    TEST_ASSERT_EQUAL('A', buffer_char_at(buf, 0));
+    TEST_ASSERT_EQUAL('B', buffer_char_at(buf, 1));
+    TEST_ASSERT_EQUAL_size_t(2, buffer_cursor_pos(buf)); // cursor after inserted text
+    TEST_ASSERT_EQUAL_size_t(1, editor_test_undo_count(ed));
+    TEST_ASSERT_EQUAL_size_t(0, editor_test_redo_count(ed));
+    editor_destroy(ed);
+}
+
+static void test_editor_undo_delete_restores_bytes(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "\xE2\x82\xAC", 3); // Euro, then backspace it away
+    editor_backspace(ed);
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    TEST_ASSERT_EQUAL_size_t(0, buffer_size(buf));
+
+    TEST_ASSERT_TRUE(editor_undo(ed)); // undo the backspace → Euro restored
+    TEST_ASSERT_EQUAL_size_t(3, buffer_size(buf));
+    TEST_ASSERT_EQUAL((char)0xE2, buffer_char_at(buf, 0));
+    TEST_ASSERT_EQUAL((char)0x82, buffer_char_at(buf, 1));
+    TEST_ASSERT_EQUAL((char)0xAC, buffer_char_at(buf, 2));
+    editor_destroy(ed);
+}
+
+static void test_editor_undo_redo_multistep(void) {
+    editor_t *ed = editor_create(&font, 256);
+    // newlines keep these as three distinct undo groups: "A", "\n", "B"
+    editor_insert_utf8(ed, "A", 1);
+    editor_insert_utf8(ed, "\n", 1);
+    editor_insert_utf8(ed, "B", 1); // "A\nB"
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    TEST_ASSERT_EQUAL_size_t(3, editor_test_undo_count(ed));
+
+    editor_undo(ed); // "A\n"
+    editor_undo(ed); // "A"
+    TEST_ASSERT_EQUAL_size_t(1, buffer_size(buf));
+    TEST_ASSERT_EQUAL_size_t(1, editor_test_undo_count(ed));
+    TEST_ASSERT_EQUAL_size_t(2, editor_test_redo_count(ed));
+
+    editor_redo(ed); // "A\n"
+    TEST_ASSERT_EQUAL_size_t(2, buffer_size(buf));
+    TEST_ASSERT_EQUAL('\n', buffer_char_at(buf, 1));
+    editor_destroy(ed);
+}
+
+// a fresh edit after undo discards the redo future (and frees its payloads —
+// ASan watches here).
+static void test_editor_new_edit_clears_redo(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "A", 1);
+    editor_insert_utf8(ed, "\n", 1); // distinct group
+    editor_undo(ed);                 // redo now holds the "\n" insert
+    TEST_ASSERT_EQUAL_size_t(1, editor_test_redo_count(ed));
+
+    editor_insert_utf8(ed, "B", 1); // new edit → redo discarded
+    TEST_ASSERT_EQUAL_size_t(0, editor_test_redo_count(ed));
+    TEST_ASSERT_FALSE(editor_redo(ed)); // nothing to redo
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    TEST_ASSERT_EQUAL('B', buffer_char_at(buf, 1)); // the new edit, not "\n"
+    editor_destroy(ed);
+}
+
+static void test_editor_newline_breaks_insert_coalesce(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "a", 1);
+    editor_insert_utf8(ed, "\n", 1); // own group; can't fold either side
+    editor_insert_utf8(ed, "b", 1);
+    TEST_ASSERT_EQUAL_size_t(3, editor_test_undo_count(ed));
+    editor_destroy(ed);
+}
+
+static void test_editor_cursor_move_breaks_coalesce(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "A", 1);
+    editor_insert_utf8(ed, "B", 1); // coalesces → "AB", one group
+    TEST_ASSERT_EQUAL_size_t(1, editor_test_undo_count(ed));
+    // move away and back to the same spot: geometry would allow folding, but the
+    // cursor jump must break the chain
+    editor_move_cursor(ed, EDITOR_CURSOR_LEFT);
+    editor_move_cursor(ed, EDITOR_CURSOR_RIGHT);
+    editor_insert_utf8(ed, "C", 1);
+    TEST_ASSERT_EQUAL_size_t(2, editor_test_undo_count(ed));
+    editor_destroy(ed);
+}
+
+static void test_editor_backspaces_coalesce_and_restore(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "abc", 3); // one insert group
+    editor_backspace(ed);             // delete 'c' (new group: differs from insert)
+    editor_backspace(ed);             // delete 'b', folds left into the delete group
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    TEST_ASSERT_EQUAL_size_t(1, buffer_size(buf)); // "a"
+    TEST_ASSERT_EQUAL_size_t(2, editor_test_undo_count(ed));
+
+    TEST_ASSERT_TRUE(editor_undo(ed)); // one undo restores both "bc"
+    TEST_ASSERT_EQUAL_size_t(3, buffer_size(buf));
+    TEST_ASSERT_EQUAL('a', buffer_char_at(buf, 0));
+    TEST_ASSERT_EQUAL('b', buffer_char_at(buf, 1));
+    TEST_ASSERT_EQUAL('c', buffer_char_at(buf, 2));
+    editor_destroy(ed);
+}
+
+static void test_editor_delete_forward_coalesces(void) {
+    editor_t *ed = editor_create(&font, 256);
+    editor_insert_utf8(ed, "abc", 3);
+    buffer_set_cursor((buffer_t *)editor_test_get_buffer(ed), 0);
+    editor_delete_forward(ed); // delete 'a' (new group)
+    editor_delete_forward(ed); // delete 'b', folds right into the delete group
+    const buffer_t *buf = editor_test_get_buffer(ed);
+    TEST_ASSERT_EQUAL_size_t(1, buffer_size(buf)); // "c"
+    TEST_ASSERT_EQUAL_size_t(2, editor_test_undo_count(ed));
+
+    TEST_ASSERT_TRUE(editor_undo(ed)); // restores "ab" ahead of "c"
+    TEST_ASSERT_EQUAL_size_t(3, buffer_size(buf));
+    TEST_ASSERT_EQUAL('a', buffer_char_at(buf, 0));
+    TEST_ASSERT_EQUAL('b', buffer_char_at(buf, 1));
+    TEST_ASSERT_EQUAL('c', buffer_char_at(buf, 2));
+    editor_destroy(ed);
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_editor_undo_empty_returns_false);
+    RUN_TEST(test_editor_undo_insert_reverts_buffer_and_cursor);
+    RUN_TEST(test_editor_redo_replays_insert);
+    RUN_TEST(test_editor_undo_delete_restores_bytes);
+    RUN_TEST(test_editor_undo_redo_multistep);
+    RUN_TEST(test_editor_new_edit_clears_redo);
+    RUN_TEST(test_editor_newline_breaks_insert_coalesce);
+    RUN_TEST(test_editor_cursor_move_breaks_coalesce);
+    RUN_TEST(test_editor_backspaces_coalesce_and_restore);
+    RUN_TEST(test_editor_delete_forward_coalesces);
+    RUN_TEST(test_editor_contiguous_inserts_coalesce);
+    RUN_TEST(test_editor_delete_records_on_undo_stack);
+    RUN_TEST(test_editor_failed_insert_does_not_record);
+    RUN_TEST(test_editor_at_edge_noop_does_not_record);
+    RUN_TEST(test_editor_undo_ring_caps_and_drops_oldest);
     RUN_TEST(test_editor_create_returns_non_null_for_valid_args);
     RUN_TEST(test_editor_render_clears_dirty_flag);
     RUN_TEST(test_typing_erases_old_underline);

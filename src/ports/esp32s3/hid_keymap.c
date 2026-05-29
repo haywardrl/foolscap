@@ -113,6 +113,16 @@ bool hid_decode(uint8_t mods, uint8_t keycode, bool caps_lock, key_event_t *out)
             out->len = 0;
             return true;
         }
+        if (keycode == 0x1D) { // z: undo
+            out->kind = KEY_UNDO;
+            out->len = 0;
+            return true;
+        }
+        if (keycode == 0x1C) { // y: redo
+            out->kind = KEY_REDO;
+            out->len = 0;
+            return true;
+        }
         return false; // swallow other Ctrl+letter so it doesn't type
     }
 

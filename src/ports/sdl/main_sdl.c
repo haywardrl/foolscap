@@ -112,6 +112,16 @@ int main(int argc, char *argv[]) {
                         editor_move_cursor(ed, EDITOR_CURSOR_UP);
                     }
                     break;
+                case SDLK_z:
+                    if (event.key.keysym.mod & KMOD_CTRL) {
+                        editor_undo(ed);
+                    }
+                    break;
+                case SDLK_y:
+                    if (event.key.keysym.mod & KMOD_CTRL) {
+                        editor_redo(ed);
+                    }
+                    break;
                 }
                 break;
 

@@ -16,6 +16,8 @@ typedef enum {
     KEY_WORD_RIGHT,
     KEY_LINE_START,
     KEY_LINE_END,
+    KEY_UNDO,
+    KEY_REDO,
 } key_kind_t;
 
 typedef struct {

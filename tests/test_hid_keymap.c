@@ -124,6 +124,18 @@ static void test_alt_other_letter_is_swallowed(void) {
     TEST_ASSERT_FALSE(hid_decode(0x04, 0x04, false, &e));
 }
 
+static void test_ctrl_z_and_ctrl_y_are_undo_redo(void) {
+    key_event_t e;
+    TEST_ASSERT_TRUE(hid_decode(0x01, 0x1D, false, &e)); // L-Ctrl + z
+    TEST_ASSERT_EQUAL(KEY_UNDO, e.kind);
+    TEST_ASSERT_TRUE(hid_decode(0x10, 0x1C, false, &e)); // R-Ctrl + y
+    TEST_ASSERT_EQUAL(KEY_REDO, e.kind);
+    // without ctrl they must type the letter, not undo/redo
+    TEST_ASSERT_TRUE(hid_decode(0x00, 0x1D, false, &e));
+    TEST_ASSERT_EQUAL(KEY_INSERT, e.kind);
+    TEST_ASSERT_EQUAL('z', e.bytes[0]);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lowercase_letter);
@@ -140,5 +152,6 @@ int main(void) {
     RUN_TEST(test_alt_arrow_is_word_motion);
     RUN_TEST(test_alt_f_and_alt_b_are_emacs_word_motion);
     RUN_TEST(test_alt_other_letter_is_swallowed);
+    RUN_TEST(test_ctrl_z_and_ctrl_y_are_undo_redo);
     return UNITY_END();
 }

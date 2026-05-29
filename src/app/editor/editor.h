@@ -52,6 +52,12 @@ bool editor_delete_forward(editor_t *ed);
 // Move the cursor by one codepoint in the given direction
 bool editor_move_cursor(editor_t *ed, editor_cursor_direction_t direction);
 
+// undo the most recent edit, redo the most recently undone one. return false
+// when there's nothing to undo/redo. the cursor lands wherever the reversed or
+// replayed edit leaves it (no separate cursor history).
+bool editor_undo(editor_t *ed);
+bool editor_redo(editor_t *ed);
+
 // repaint the accumulated damage, then return it (and reset) so the caller
 // flushes only the changed region, lines outside the region are left untouched.
 damage_t editor_render(editor_t *ed);

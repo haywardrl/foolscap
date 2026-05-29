@@ -13,6 +13,19 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
+
+// undo/redo depth. small enough to keep the inline rings light, large enough
+// to hit ring wrap and eviction in tests.
+#define UNDO_CAP 256
+
+typedef enum { CMD_INSERT, CMD_DELETE } command_kind_t;
+typedef struct {
+    command_kind_t kind;
+    size_t pos;
+    size_t len;
+    char *bytes; // owned by whichever stack holds the command
+} command_t;
 
 struct editor {
     buffer_t *buf;
@@ -24,6 +37,15 @@ struct editor {
     size_t preferred_col;
     damage_t damage;         // pixels to repaint, coalesced across this frame
     rect_t last_cursor_rect; // cell painted last render, erased on the next move
+
+    // undo is a ring (drops oldest when full). redo is a stack that can never
+    // outgrow it, so it shares the cap. every live entry owns its bytes.
+    command_t undo[UNDO_CAP];
+    size_t undo_head;  // next push slot
+    size_t undo_count; // live entries, <= UNDO_CAP
+    command_t redo[UNDO_CAP];
+    size_t redo_count;   // top is redo[redo_count - 1]
+    bool coalesce_break; // next edit starts a new undo group (cursor jump/undo/redo)
 };
 
 // the cell occupied by the cursor at (cursor_x, baseline), the glyph box plus
@@ -66,14 +88,29 @@ static void editor_damage_from_patch(editor_t *ed, layout_patch_t patch) {
 }
 
 // apply a content mutation to the standing layout so render never recomputes
-static void editor_apply(editor_t *ed, edit_t edit) {
+static bool editor_apply(editor_t *ed, command_t cmd) {
+    if (cmd.kind == CMD_INSERT) {
+        buffer_set_cursor(ed->buf, cmd.pos);
+        if (!buffer_insert_bytes(ed->buf, cmd.bytes, cmd.len))
+            return false;
+    } else { // CMD_DELETE
+        // callers guarantee (pos, pos+len) is removable, so this can't fail
+        buffer_set_cursor(ed->buf, cmd.pos + cmd.len);
+        buffer_delete_before_cursor(ed->buf, cmd.len);
+    }
+    // patch layout and accumulate damage
+    edit_t edit = {.type = (cmd.kind == CMD_INSERT) ? EDIT_INSERT : EDIT_DELETE,
+                   .pos = cmd.pos,
+                   .len = cmd.len};
     layout_patch_t patch;
+
     if (!layout_apply_edit(&ed->layout, edit, ed->buf, ed->line_scratch, ed->line_scratch_capacity,
                            &patch)) {
         editor_mark_full(ed); // patch failed; layout may be reset, repaint all
-        return;
+        return false;
     }
     editor_damage_from_patch(ed, patch);
+    return true;
 }
 
 editor_t *editor_create(const font_t *font, size_t document_capacity) {
@@ -115,6 +152,10 @@ editor_t *editor_create(const font_t *font, size_t document_capacity) {
     ed->cursor_width = x_advance;
     ed->preferred_col = SIZE_MAX; // unset
     ed->last_cursor_rect = (rect_t){0};
+    ed->undo_head = 0;
+    ed->undo_count = 0;
+    ed->redo_count = 0;
+    ed->coalesce_break = false;
     // the first frame paints the whole screen
     ed->damage = (damage_t){.rect = {0, 0, fb->width, fb->height}, .kind = FLUSH_FULL};
 
@@ -128,24 +169,158 @@ editor_t *editor_create(const font_t *font, size_t document_capacity) {
     return ed;
 }
 
+// index of the i-th live undo entry, oldest (i=0) to newest (i=count-1)
+static size_t undo_live_index(const editor_t *ed, size_t i) {
+    return (ed->undo_head + UNDO_CAP - ed->undo_count + i) % UNDO_CAP;
+}
+
+// push a command onto the undo ring, taking ownership of cmd.bytes. when full,
+// the slot at head holds the oldest command, so free its payload before reuse.
+static void undo_push(editor_t *ed, command_t cmd) {
+    if (ed->undo_count == UNDO_CAP) {
+        hal_mem_free(ed->undo[ed->undo_head].bytes); // drop oldest
+    } else {
+        ed->undo_count++;
+    }
+    ed->undo[ed->undo_head] = cmd;
+    ed->undo_head = (ed->undo_head + 1) % UNDO_CAP;
+}
+
+// free every redo payload and empty the stack. any new edit discards redo
+// (undo is linear, not branching).
+static void redo_clear(editor_t *ed) {
+    for (size_t i = 0; i < ed->redo_count; i++) {
+        hal_mem_free(ed->redo[i].bytes);
+    }
+    ed->redo_count = 0;
+}
+
+// pop the newest undo entry into *out, transferring ownership to the caller.
+static bool undo_pop(editor_t *ed, command_t *out) {
+    if (ed->undo_count == 0) {
+        return false;
+    }
+    ed->undo_head = (ed->undo_head + UNDO_CAP - 1) % UNDO_CAP;
+    *out = ed->undo[ed->undo_head];
+    ed->undo_count--;
+    return true;
+}
+
+// redo can never hold more than the undo history (each entry came from an undo
+// pop), which is capped at UNDO_CAP, so the stack cannot overflow.
+static void redo_push(editor_t *ed, command_t cmd) {
+    ed->redo[ed->redo_count++] = cmd;
+}
+
+static bool redo_pop(editor_t *ed, command_t *out) {
+    if (ed->redo_count == 0) {
+        return false;
+    }
+    *out = ed->redo[--ed->redo_count];
+    return true;
+}
+
 void editor_destroy(editor_t *ed) {
     if (ed == NULL) {
         return;
     }
+    for (size_t i = 0; i < ed->undo_count; i++) {
+        hal_mem_free(ed->undo[undo_live_index(ed, i)].bytes);
+    }
+    redo_clear(ed);
     hal_mem_free(ed->line_scratch);
     buffer_destroy(ed->buf);
     layout_destroy(&ed->layout);
     hal_mem_free(ed);
 }
 
-bool editor_insert_utf8(editor_t *ed, const char *bytes, size_t len) {
-    size_t pos = buffer_cursor_pos(ed->buf);
-    bool changed = buffer_insert_bytes(ed->buf, bytes, len);
-    if (changed) {
-        editor_apply(ed, (edit_t){.type = EDIT_INSERT, .pos = pos, .len = len});
-        ed->preferred_col = SIZE_MAX;
+static bool bytes_have_newline(const char *b, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        if (b[i] == '\n') {
+            return true;
+        }
     }
-    return changed;
+    return false;
+}
+
+// try to fold cmd into the newest undo entry, growing its payload in place.
+// returns true (and frees cmd.bytes) on a merge. rules: same kind, contiguous
+// range, no newline on either side. a newline is always its own undo step.
+static bool try_coalesce(editor_t *ed, command_t cmd) {
+    if (ed->undo_count == 0) {
+        return false;
+    }
+    command_t *top = &ed->undo[(ed->undo_head + UNDO_CAP - 1) % UNDO_CAP];
+    if (top->kind != cmd.kind) {
+        return false;
+    }
+    if (bytes_have_newline(cmd.bytes, cmd.len) || bytes_have_newline(top->bytes, top->len)) {
+        return false;
+    }
+
+    bool prepend = false; // delete extending leftward (backspace)
+    if (cmd.kind == CMD_INSERT) {
+        if (cmd.pos != top->pos + top->len) {
+            return false; // typing must continue right after the run
+        }
+    } else { // CMD_DELETE
+        if (cmd.pos == top->pos) {
+            prepend = false; // delete-forward: new bytes follow top's
+        } else if (cmd.pos + cmd.len == top->pos) {
+            prepend = true; // backspace: new bytes precede top's
+        } else {
+            return false;
+        }
+    }
+
+    size_t new_len = top->len + cmd.len;
+    char *grown = hal_mem_alloc(new_len, HAL_MEM_DEFAULT);
+    if (grown == NULL) {
+        return false; // fall back to recording a separate command
+    }
+    if (prepend) {
+        memcpy(grown, cmd.bytes, cmd.len);
+        memcpy(grown + cmd.len, top->bytes, top->len);
+        top->pos = cmd.pos; // the run's start moves left
+    } else {
+        memcpy(grown, top->bytes, top->len);
+        memcpy(grown + top->len, cmd.bytes, cmd.len);
+    }
+    hal_mem_free(top->bytes);
+    top->bytes = grown;
+    top->len = new_len;
+    hal_mem_free(cmd.bytes); // folded in; cmd's own copy is now redundant
+    return true;
+}
+
+// apply cmd, then record it: fold into the current undo group when allowed,
+// else start a new one. on failure, free the payload and report no change.
+static bool editor_record(editor_t *ed, command_t cmd) {
+    if (!editor_apply(ed, cmd)) {
+        hal_mem_free(cmd.bytes);
+        return false;
+    }
+    bool coalesced = !ed->coalesce_break && try_coalesce(ed, cmd);
+    if (!coalesced) {
+        undo_push(ed, cmd); // ring now owns the payload
+    }
+    ed->coalesce_break = false;
+    redo_clear(ed);
+    ed->preferred_col = SIZE_MAX;
+    return true;
+}
+
+bool editor_insert_utf8(editor_t *ed, const char *bytes, size_t len) {
+    // own a copy. the command outlives this call on the undo ring, so it can't
+    // borrow the caller's transient bytes.
+    char *owned = hal_mem_alloc(len, HAL_MEM_DEFAULT);
+    if (owned == NULL) {
+        return false;
+    }
+    memcpy(owned, bytes, len);
+    size_t pos = buffer_cursor_pos(ed->buf);
+    return editor_record(ed,
+                         (command_t){.kind = CMD_INSERT, .pos = pos, .len = len, .bytes = owned});
 }
 
 bool editor_backspace(editor_t *ed) {
@@ -154,14 +329,17 @@ bool editor_backspace(editor_t *ed) {
         return false;
     }
     size_t prev_boundary = buffer_prev_codepoint_boundary(ed->buf, cursor_pos);
-    size_t bytes_to_delete = cursor_pos - prev_boundary;
-    size_t deleted = buffer_delete_before_cursor(ed->buf, bytes_to_delete);
-    if (deleted == 0) {
+    size_t len = cursor_pos - prev_boundary;
+    char *owned = hal_mem_alloc(len, HAL_MEM_DEFAULT);
+    if (owned == NULL) {
         return false;
     }
-    editor_apply(ed, (edit_t){.type = EDIT_DELETE, .pos = prev_boundary, .len = deleted});
-    ed->preferred_col = SIZE_MAX;
-    return true;
+    // copy the bytes before the delete removes them, so undo can reinsert them
+    buffer_region_t r = buffer_region(ed->buf, prev_boundary, cursor_pos, ed->line_scratch,
+                                      ed->line_scratch_capacity);
+    memcpy(owned, r.ptr, r.len);
+    return editor_record(
+        ed, (command_t){.kind = CMD_DELETE, .pos = prev_boundary, .len = len, .bytes = owned});
 }
 
 bool editor_delete_forward(editor_t *ed) {
@@ -171,17 +349,49 @@ bool editor_delete_forward(editor_t *ed) {
         return false;
     }
     size_t next_boundary = buffer_next_codepoint_boundary(ed->buf, cursor_pos);
-    size_t bytes_to_delete = next_boundary - cursor_pos;
-    size_t deleted = buffer_delete_after_cursor(ed->buf, bytes_to_delete);
-    if (deleted == 0) {
+    size_t len = next_boundary - cursor_pos;
+    char *owned = hal_mem_alloc(len, HAL_MEM_DEFAULT);
+    if (owned == NULL) {
         return false;
     }
-    editor_apply(ed, (edit_t){.type = EDIT_DELETE, .pos = cursor_pos, .len = deleted});
+    buffer_region_t r = buffer_region(ed->buf, cursor_pos, next_boundary, ed->line_scratch,
+                                      ed->line_scratch_capacity);
+    memcpy(owned, r.ptr, r.len);
+    return editor_record(
+        ed, (command_t){.kind = CMD_DELETE, .pos = cursor_pos, .len = len, .bytes = owned});
+}
+
+bool editor_undo(editor_t *ed) {
+    command_t cmd;
+    if (!undo_pop(ed, &cmd)) {
+        return false;
+    }
+    // the inverse only reads cmd.bytes, so no copy or ownership change here
+    command_t inverse = cmd;
+    inverse.kind = (cmd.kind == CMD_INSERT) ? CMD_DELETE : CMD_INSERT;
+    // reinsert always fits (the bytes were just freed) and delete-by-position
+    // always succeeds, so apply can't fail
+    editor_apply(ed, inverse);
+    redo_push(ed, cmd); // redo now owns the payload
+    ed->coalesce_break = true;
+    ed->preferred_col = SIZE_MAX;
+    return true;
+}
+
+bool editor_redo(editor_t *ed) {
+    command_t cmd;
+    if (!redo_pop(ed, &cmd)) {
+        return false;
+    }
+    editor_apply(ed, cmd); // replay the original edit forward
+    undo_push(ed, cmd);    // undo owns the payload again
+    ed->coalesce_break = true;
     ed->preferred_col = SIZE_MAX;
     return true;
 }
 
 bool editor_move_cursor(editor_t *ed, editor_cursor_direction_t direction) {
+    ed->coalesce_break = true; // any cursor jump ends the current undo group
     size_t cursor_pos = buffer_cursor_pos(ed->buf);
     size_t buffer_len = buffer_size(ed->buf);
 
@@ -330,4 +540,12 @@ bool editor_is_dirty(const editor_t *ed) {
 
 const buffer_t *editor_test_get_buffer(const editor_t *ed) {
     return ed->buf;
+}
+
+size_t editor_test_undo_count(const editor_t *ed) {
+    return ed->undo_count;
+}
+
+size_t editor_test_redo_count(const editor_t *ed) {
+    return ed->redo_count;
 }
